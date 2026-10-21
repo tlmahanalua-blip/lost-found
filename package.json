@@ -1,0 +1,10 @@
+{
+  "name": "aitu-lost-and-found",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Complete browser-local AITU Lost & Found ICT Stage 1 prototype",
+  "scripts": {
+    "test": "node tests/scenarios.mjs"
+  }
+}
