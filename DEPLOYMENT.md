@@ -1,90 +1,119 @@
-# Deploy your AITU Lost & Found website
+# Обновление сайта на Vercel
 
-This archive contains the complete source of the website you received, plus its tests and these deployment instructions. All four files in `dist` match the deployed source exactly. The original source commit is `1f43cf2d9b4d7f173f6fe4607baac8a4d1ff2386`.
+В этой версии есть настоящая регистрация, вход, база данных, контакты и сохранение фотографий. Старого размещения только HTML/CSS/JS уже недостаточно: нужны также серверные файлы и подключение базы.
 
-## 1. Extract the ZIP
+## 1. Проверь работу на ноутбуке
 
-Choose **Extract all** in Windows. Open the extracted `aitu-lost-found` folder. Keep the file and folder names unchanged.
+Установи Node.js 22 (22.13 или новее). Распакуй архив. Открой PowerShell **в папке, где лежит `package.json`**, и выполни:
 
-Files included:
+```powershell
+npm ci
+npm start
+```
 
-| File | Purpose |
+Открой http://localhost:8000. Сервер сам создаст `data/lost-found.db`. Создай аккаунт, добавь объявление с контактами и фото. Данные сохранятся в SQLite после перезапуска. Не запускай эту версию через `python -m http.server`: Python будет показывать файлы, но не запустит API регистрации.
+
+Для остановки нажми Ctrl+C. Для запуска снова используй `npm start`.
+
+## 2. Создай базу для Vercel
+
+Обычный локальный файл `.db` нельзя использовать как постоянную общую базу внутри Vercel Functions. Поэтому на ноутбуке используется SQLite-файл, а для Vercel — удалённая SQLite-совместимая база **Turso libSQL**.
+
+1. Открой Turso: https://turso.tech .
+2. Создай базу **libSQL**, совместимую с `@libsql/client`. Если предлагается выбор движка между Turso и libSQL, выбери **libSQL** для этого проекта.
+3. Скопируй URL базы вида `libsql://...`.
+4. Создай database auth token для этой базы. Это именно токен доступа к базе, не общий токен управления аккаунтом.
+5. Сохрани URL и токен у себя. Не вставляй токен в код, HTML, чат или публичный GitHub.
+
+Документация подключения: https://docs.turso.tech/sdk/ts/reference .
+
+Создание аккаунта/базы и выбор тарифа выполняешь ты. Никакие платные ресурсы автоматически не создаются этим кодом.
+
+## 3. Загрузи полный проект
+
+В репозитории, подключённом к твоему Vercel-проекту, должны находиться **все** файлы из распакованной папки, включая:
+
+```text
+api/
+lib/
+public/
+scripts/
+tests/
+database/
+package.json
+package-lock.json
+vercel.json
+server.js
+```
+
+Не загружай только `public/` и не используй старую `dist/` как корень проекта. Не загружай `node_modules`, настоящую `.env` или локальную `data/` с пользовательскими данными. В репозиторий можно добавить безопасный шаблон `.env.example`.
+
+## 4. Настройки Vercel
+
+В настройках проекта проверь:
+
+| Настройка | Значение |
 | --- | --- |
-| `dist/index.html` | All page markup, forms, dialogs and navigation |
-| `dist/styles.css` | Complete styling and responsive phone layouts |
-| `dist/app.js` | All screen interactions, photo upload, inline SVG illustrations, claims and coordinator demo |
-| `dist/model.js` | Sample listings, search/filter rules, validation and browser-local storage |
-| `tests/scenarios.mjs` | 18 automated scenario checks |
-| `README.md` | Project context, scope, survey evidence and demonstration steps |
-| `.openai/hosting.json` | Original Sites project configuration; not needed by other hosts |
-| `package.json` | Optional Node.js module and test settings added for this portable export |
-| `start-local.bat` | Optional Windows local-server launcher |
-| `DEPLOYMENT.md` | This guide |
-| `SHA256SUMS.txt` | File integrity checksums |
+| Root Directory | Папка, где лежат `package.json` и `vercel.json` |
+| Framework Preset | Other |
+| Node.js Version | 22.x |
+| Install Command | `npm ci` |
+| Build Command | `npm run build` |
+| Output Directory | `public` |
 
-There are no missing image downloads, fonts, npm dependencies, API keys or hidden application services. Illustrations are SVG code inside `app.js`; the small site icon is embedded in `index.html`.
+`vercel.json` уже содержит настройки сборки и output directory. Удали старые ручные overrides, которые указывают на `dist`. Серверная функция находится в `api/index.js` и обслуживает `/api/index`.
 
-## 2. Run it on your own computer
+## 5. Environment Variables
 
-The website uses JavaScript modules, so serve it over HTTP. Double-clicking `index.html` may block JavaScript imports.
+Добавь в Vercel следующие **серверные** переменные:
 
-If Python is installed:
+| Name | Value |
+| --- | --- |
+| `TURSO_DATABASE_URL` | URL твоей libSQL-базы |
+| `TURSO_AUTH_TOKEN` | Database auth token |
+| `APP_ORIGIN` | Необязательно: основной адрес сайта, например `https://your-project.vercel.app` |
+| `ADMIN_EMAILS` | Необязательно: email твоего уже зарегистрированного аккаунта для координатора |
 
-1. Open a terminal in the extracted `aitu-lost-found` folder.
-2. Run:
+Выбери Production и, если нужна тестовая версия, Preview. Не используй переменные с префиксами `NEXT_PUBLIC_` или `VITE_` для токена. **Не задавай `DATABASE_URL=file:...` на Vercel.**
 
-```sh
-python -m http.server 8000 --bind 127.0.0.1 --directory dist
-```
+При обновлении существующей базы версии 2 сначала создай резервную копию средствами её провайдера. Версия 3 переносит таблицы в схему users / categories / items; локальная файловая копия на Vercel не создаётся.
 
-3. Open **http://localhost:8000** in your browser.
-4. Keep the terminal open while using the site. Press **Ctrl+C** to stop it.
+После сохранения переменных запусти **Redeploy**. Таблицы создаются автоматически при первом API-запросе; вручную выполнять SQL не требуется. Сборка не требует доступа к базе. Локальная команда npm start подключает учебные 102 записи только к настроенной у неё базе. Для переноса в удалённую базу из частной папки проекта настрой TURSO_DATABASE_URL / TURSO_AUTH_TOKEN в .env и выполни npm.cmd run db:coursework. Учебный файл database/assignment3-original.db исключён из git; публиковать его отдельно не требуется.
 
-On Windows you can also double-click `start-local.bat`. If your Python command is `python3`, replace `python` with `python3`. If you do not have Python, a local static HTTP server supplied by your editor also works: serve the `dist` folder.
+Для координатора: сначала зарегистрируй свой аккаунт, убедись, что это твой email, затем добавь его в `ADMIN_EMAILS` и передеплой. Несколько адресов разделяются запятыми. Email в этой учебной версии не подтверждается, поэтому не назначай права адресу, аккаунт которого ещё не создала сама.
 
-## 3. Deploy it to a static web host
+## 6. Проверка после деплоя
 
-Use a host that serves ordinary HTML, CSS and JavaScript files.
+1. Открой сайт и дождись надписи **CONNECTED**.
+2. Нажми **Create account**, введи имя, email и пароль минимум из 10 символов.
+3. В **Report an item** выбери **Lost** или **Found**, добавь название, категорию, дату и время, место и описание.
+4. Добавь фото. Введи имя и email контактного лица; телефон и Telegram можно оставить пустыми.
+5. Подтверди согласие на показ контактов зарегистрированным пользователям и отсутствие приватных ID-данных в описании/фото.
+6. Опубликуй объявление. Открой **My reports** и проверь контакты и фото.
+7. Открой сайт в другом браузере: объявление видно всем, контакты доступны после входа. Другой зарегистрированный пользователь может отправить claim.
+8. В **Manage reports** автор видит заявки на свои вещи. Только автор или координатор может отметить вещь возвращённой.
 
-- **Framework:** none / static website.
-- **Build command:** none. If an optional command field is shown, leave it empty.
-- **Publish/output directory:** `dist`, relative to this project folder.
-- **Install command:** none; this website has no package dependencies.
-- **Start/server command in production:** none; let the host serve the files.
+Новые данные теперь общие для пользователей, а не хранятся только в браузере. Фото сохраняется в базе. Пароли хранятся в виде salted scrypt hashes; cookie сессии HttpOnly, SameSite=Lax и Secure на Vercel.
 
-For a manual upload, upload **all four files inside `dist` together**, preserving their names. `index.html` must end up at the website root, beside `styles.css`, `app.js` and `model.js`.
+## Если не работает
 
-For deployment from a Git repository, commit this extracted project and configure the publish directory as `dist`. The `.openai/hosting.json` file is only for the original Sites project and is ignored by ordinary static hosts; it is not a reusable new Sites project identity.
+- **OFFLINE / Database is not configured:** проверь обе `TURSO_*` переменные, тип базы libSQL и сделай Redeploy.
+- **Страница есть, кнопки входа не работают:** проверь, что загружены `api/`, `lib/` и `package.json`, а не только статические файлы.
+- **Всё ещё используется старый сайт:** проверь Root Directory и Output Directory (`public`, не `dist`).
+- **npm не распознано:** установи Node.js, закрой PowerShell и открой его заново.
+- **Данные на ноутбуке не видны на Vercel:** локальный SQLite и удалённая база — разные базы. Автоматического переноса нет.
+- **Сброс пароля:** в текущей версии не реализован. Запомни пароль тестового аккаунта.
 
-The host must serve `.js` files with a JavaScript MIME type. HTTPS is recommended. No SPA fallback, database provisioning, environment variables or server-side code is required.
+Не публикуй личные данные в учебном проекте без согласия. Указанные контакты показываются любому вошедшему пользователю; аккаунты не подтверждают принадлежность к университету.
 
-### Private access
+## English quick setup
 
-The existing Site's private access is enforced by Sites hosting. It is **not** a login feature in this code. To keep your own deployment private, enable authentication, password protection or restricted access on your chosen host. Exporting this ZIP does not change the existing Site's access.
+1. Deploy the **entire project**, including `api/` and `lib/`, to your existing Vercel repository.
+2. Use Framework Other, Node 22.x, install `npm ci`, build `npm run build`, output `public`.
+3. Create a **Turso libSQL** database. Set server-only `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` in Vercel; redeploy.
+4. Database tables initialise automatically on the first request. Register an account and publish a report.
+5. For local use: `npm ci`, then `npm start`; open http://localhost:8000. This creates a local SQLite database.
 
-## 4. Check your deployment
+No live deployment or remote database was created as part of preparing this ZIP. Automated local API/database tests passed; browser visual QA was interrupted.
 
-1. Search for **keys** and filter location to **Main entrance**. Open the matching card.
-2. Choose **This might be mine**. Submit a test identifying detail and test email. You should see **Demo claim saved**.
-3. Open **Report a found item**. Fill the fields and privacy checkbox; optionally choose a JPG, PNG or WebP photo up to 2 MB. Add the item.
-4. Find it in **My reports**, then refresh the page. It should still be there if browser storage is enabled.
-5. Open **Coordinator demo**. Review the demo claim, mark an item returned, then choose **Returned to owner** in the status filter.
-6. Check the two main screens on your phone or with your browser's responsive mode at 360 px wide.
-
-If the page looks unstyled, check that `styles.css` was uploaded beside `index.html`. If buttons do not work, check that both `.js` files were uploaded, are served with the correct MIME type, and that you opened an HTTP/HTTPS URL rather than a local file.
-
-## 5. Optional automated tests
-
-With a current Node.js installation, run from this project folder:
-
-```sh
-node tests/scenarios.mjs
-```
-
-Or run `npm test`. No `npm install` is necessary. Expected result: **18 scenario checks passed.** Node.js is used only for tests, not for hosting the website.
-
-## What this prototype stores
-
-Reports, uploaded photos, claims and flags use browser `localStorage`. They stay in the browser and origin where they were created. A new hosting address starts with the included sample listings; it does not import data saved at the original Site. Clearing browser data removes local reports.
-
-There is no shared database, university login/registration, real email delivery or verified staff account. The coordinator screen is deliberately a local demonstration. These are prototype limits, not missing source files. Real shared use requires adding a backend and authentication.
+Official references: https://vercel.com/kb/guide/is-sqlite-supported-in-vercel and https://docs.turso.tech/sdk/ts/reference .

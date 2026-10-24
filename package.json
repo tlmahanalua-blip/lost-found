@@ -1,10 +1,26 @@
 {
-  "name": "aitu-lost-and-found",
-  "version": "1.0.0",
+  "name": "aitu-lost-found-fullstack",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
-  "description": "Complete browser-local AITU Lost & Found ICT Stage 1 prototype",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "test": "node tests/scenarios.mjs"
+    "dev": "node --env-file-if-exists=.env server.js",
+    "start": "node --env-file-if-exists=.env server.js",
+    "build": "node scripts/check.mjs",
+    "test": "node --test tests/integration.mjs",
+    "db:init": "node --env-file-if-exists=.env scripts/init-db.mjs",
+    "db:seed": "node --env-file-if-exists=.env scripts/seed.mjs",
+    "db:import": "node --env-file-if-exists=.env scripts/import-db.mjs",
+    "db:backup": "node --env-file-if-exists=.env scripts/backup.mjs",
+    "db:demo": "node scripts/demo-db.mjs",
+    "db:coursework": "node --env-file-if-exists=.env scripts/import-coursework.mjs",
+    "prestart": "node --env-file-if-exists=.env scripts/import-coursework.mjs",
+    "predev": "node --env-file-if-exists=.env scripts/import-coursework.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "0.18.0"
   }
 }
