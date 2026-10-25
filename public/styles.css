@@ -19,3 +19,15 @@
 .guide-art{overflow:hidden;margin-bottom:10px}.guide-art img{width:100%;height:100%;object-fit:contain}.guide-art .no-photo{border-radius:17px}.guide-photo-caption{font-size:12px;line-height:1.5;color:var(--muted);margin-bottom:22px}
 
 .button.danger{color:#8d2f2f;background:#faeeee;border:1px solid #e5bcbc}.button.danger:hover{background:#f5dddd}.report-row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.report-row-actions .button{min-height:44px;padding:9px 13px;font-size:12px}
+
+/* Fade in newly appearing cards; keep existing cards steady during search. */
+.item-card.item-enter {
+  animation: item-appear 0.24s ease-out;
+}
+@keyframes item-appear {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .item-card.item-enter { animation: none; }
+}
