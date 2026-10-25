@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { getDb } from '../lib/db.js';
 import { allocateItemId } from '../lib/ids.js';
 import { currentUser, hashPassword, verifyPassword, newSession, sessionCookie, cookieToken, digest, sameOrigin, limit } from '../lib/security.js';
@@ -48,8 +48,17 @@ export default async function handler(req,res) {
     if(action==='photo'&&req.method==='GET') {
       const r=await db.execute({sql:'SELECT mime,data FROM photos WHERE item_id=?',args:[text(url.searchParams.get('id'))]});
       if(!r.rows[0])fail(404,'Photo not found.');
-      res.setHeader('Content-Type',r.rows[0].mime);res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
-      res.statusCode=200;res.end(Buffer.from(r.rows[0].data));return;
+      const bytes=Buffer.from(r.rows[0].data);
+      const etag='"'+createHash('sha256').update(bytes).digest('hex')+'"';
+      res.setHeader('Content-Type',r.rows[0].mime);
+      res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
+      res.setHeader('Cache-Control','public, max-age=0, must-revalidate');
+      res.setHeader('ETag',etag);
+      const tags=String(req.headers['if-none-match']||'').split(',').map(tag=>tag.trim());
+      if(tags.some(tag=>tag==='*'||tag===etag||tag==='W/'+etag)) {
+        res.statusCode=304;res.end();return;
+      }
+      res.statusCode=200;res.end(bytes);return;
     }
     if(action==='manage'&&req.method==='GET') {
       requireUser(user);
