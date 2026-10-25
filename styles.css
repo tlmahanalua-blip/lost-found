@@ -10,3 +10,24 @@
 
 /* Keep primary content comfortable to read on a phone. */
 .card-body h3{font-size:13px}.section-heading .eyebrow{color:#596f4f}.how-strip .eyebrow{color:#596f4f}@media(max-width:480px){.card-body h3{font-size:13px;min-height:36px}.card-location{font-size:11px}.card-bottom{font-size:10px}.card-meta .status-pill{font-size:8px}.card-date{font-size:9px}.sample-tag{font-size:8px}.filters label{font-size:10px}.filters select{font-size:11px}.search-bar input{font-size:16px}.results-heading p{font-size:11px}.section-heading p{font-size:12px}}
+.account-strip{max-width:1228px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:10px 40px;gap:14px;border-bottom:1px solid var(--line);font-size:12px}.account-strip>div{display:flex;gap:18px;align-items:center}.account-strip .button{font-size:12px}.account-strip p{color:var(--muted)}.contact-fields{min-width:0;margin:24px 0 14px;padding:17px;border:1px solid var(--line);border-radius:10px;background:#f7faf2}.contact-fields legend{font-size:14px;font-weight:700;padding:0 7px}.contact-fields>p{font-size:11px;color:var(--muted)}.contact-fields .checkbox-label>span{color:var(--ink)}.contact-box{background:#f0f5e9;border:1px solid #d2dfc9;border-radius:10px;padding:19px;margin-top:22px;overflow-wrap:anywhere}.contact-box strong,.contact-box h3{display:block;font-size:14px}.contact-box p{font-size:12px;margin:8px 0;color:var(--muted)}.contact-box p.contact-person{font-weight:600;color:var(--ink);font-size:14px}.contact-box a{display:block;text-decoration:underline;min-height:35px;padding:5px 0;font-size:13px}.contact-box small{display:block;color:var(--muted);font-size:10px;margin-top:10px}.contact-box .button{margin-top:10px}.auth-footnote{font-size:10px!important;line-height:1.6!important;margin-top:14px!important}.claim-form>small{font-size:11px;color:var(--muted)}#auth-submit{margin-top:22px;width:100%}#auth-switch{font-size:12px;min-height:44px;margin-top:10px}#auth-error{margin-top:12px}#report-login-note{background:#f0f5e9;padding:10px;border-radius:7px;color:var(--green);margin:12px 0}.close-button{width:44px;height:44px}#retry-btn{min-height:44px}.prototype-note{flex-wrap:wrap}.prototype-note>span:nth-child(2){flex:1} .prototype-note button{min-height:44px}.contact-fields input{background:white!important}@media(max-width:760px){.account-strip{padding:10px 22px;font-size:11px}.account-strip>div{gap:10px}.account-strip .button{padding:9px 12px;font-size:11px}.account-strip .nav-link{font-size:12px}.contact-fields{padding:13px}}@media(max-width:480px){.account-strip{padding:10px 20px;align-items:flex-start;gap:6px;flex-wrap:wrap}.account-strip>p{width:100%}.account-strip>div{width:100%;justify-content:flex-end}.contact-box a{font-size:14px;min-height:44px}.contact-fields{padding:12px 10px}.prototype-note>span:nth-child(2){min-width:170px}#project-btn{margin-left:0}}
+
+.status-pill.lost{background:#fae9dd;color:#88451e}.resolved-note{font-size:12px;color:#425d3e;background:#edf4e7;padding:10px 13px;margin-top:14px;border-radius:7px}.art-card-bottom small{align-items:flex-start;gap:8px;line-height:1.5}.art-card-bottom small>span{flex-shrink:0}.hero-copy>p>strong{color:var(--ink)}
+
+.no-photo{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#eef0e9;color:#687461;position:relative;z-index:1}.no-photo svg{width:42px;height:42px;fill:none;stroke:currentColor;stroke-width:1.8}.no-photo span{font-size:13px;font-weight:500;letter-spacing:.2px}
+
+.guide-art{overflow:hidden;margin-bottom:10px}.guide-art img{width:100%;height:100%;object-fit:contain}.guide-art .no-photo{border-radius:17px}.guide-photo-caption{font-size:12px;line-height:1.5;color:var(--muted);margin-bottom:22px}
+
+.button.danger{color:#8d2f2f;background:#faeeee;border:1px solid #e5bcbc}.button.danger:hover{background:#f5dddd}.report-row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.report-row-actions .button{min-height:44px;padding:9px 13px;font-size:12px}
+
+/* Fade in newly appearing cards; keep existing cards steady during search. */
+.item-card.item-enter {
+  animation: item-appear 0.24s ease-out;
+}
+@keyframes item-appear {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .item-card.item-enter { animation: none; }
+}

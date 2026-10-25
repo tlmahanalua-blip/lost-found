@@ -1,7 +1,7 @@
-import { CATEGORIES, LOCATIONS, TODAY, loadState, persist, filterItems, createReport, createClaim, markReturned, flagItem, safePhoto } from './model.js';
-
-const $ = id => document.getElementById(id);
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+import { CATEGORIES, LOCATIONS, TODAY, filterItems, validateReport, formatEventDate } from './model.js';
+import {renderItemVisual} from './media.js';
+const $=id=>document.getElementById(id);
+const esc=value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const drawings = {
   bag:'<path d="M68 62c-2-48 64-48 64 0" fill="none" stroke="#7c6d52" stroke-width="9"/><path d="M53 58h94l10 106q-57 14-114 0z" fill="#d7bd89"/><path d="M61 66h78l8 91q-47 10-94 0z" fill="#e7d5ae"/><path d="M73 56v34m54-34v34" stroke="#b3996b" stroke-width="7" stroke-linecap="round"/><path d="M72 114q16-26 30 0q14-26 28 0q0 18-29 34q-29-16-29-34" fill="#607a4d"/><path d="M59 157q42 8 82 0" fill="none" stroke="#c8af7e" stroke-width="2"/>',
   keys:'<g transform="rotate(-22 100 100)"><circle cx="103" cy="57" r="29" fill="none" stroke="#8f9b9e" stroke-width="7"/><path d="M94 81v69l-13 11v-18H69v-14h12V80" fill="#c1c8c9" stroke="#9da6a8" stroke-width="2"/><path d="M119 78v70l11 10v-18h12v-13h-13V76" fill="#d5bb73" stroke="#a99359" stroke-width="2"/><rect x="80" y="32" width="41" height="55" rx="13" fill="#5584a0"/><circle cx="100" cy="44" r="5" fill="#dbe8ed"/><path d="M90 64h20" stroke="#a2c5d7" stroke-width="3" stroke-linecap="round"/></g>',
@@ -13,120 +13,163 @@ const drawings = {
   charger:'<path d="M68 89q-34-11-24-42q10-23 31-10t2 41q-9 16 14 28l22 11q39 13 36 41q-2 20-25 10" fill="none" stroke="#9aa6a2" stroke-width="5" stroke-linecap="round"/><g transform="rotate(-13 105 96)"><rect x="79" y="59" width="61" height="62" rx="11" fill="#e0e4de" stroke="#adb9b2" stroke-width="2"/><path d="M96 46v13m26-13v13" stroke="#9aa5a0" stroke-width="6"/><path d="M99 73h22m-22 6h14" stroke="#a6b3ab" stroke-width="2"/></g><rect x="109" y="158" width="19" height="11" rx="3" fill="#687c6f"/>'
 };
 function illustration(icon) { return `<svg viewBox="0 0 200 200" aria-hidden="true" focusable="false">${drawings[icon] || drawings.bag}</svg>`; }
-function visual(item) { const photo=safePhoto(item.photo); return photo?`<img src="${photo}" alt="Photo of ${esc(item.title)}">`:illustration(item.icon); }
+const visual=renderItemVisual;
+
+const {api}=await import('./api.js');
 const pin='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 6c0 4-5 8-5 8S3 10 3 6a5 5 0 0110 0z"/><circle cx="8" cy="6" r="1.6"/></svg>';
-const dateLabel = date => new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short'}).format(new Date(date+'T12:00:00'));
-let storage;
-try { storage=window.localStorage; } catch { storage={getItem:()=>null,setItem:()=>{throw new Error('Storage unavailable');}}; }
-let state = loadState(storage), mine=false, photoData='', photoBusy=false, toastTimer, activeItemId=null;
-function save(next) {
-  try { persist(storage,next); state=next; updateMyCount(); return true; }
-  catch { toast('Could not save. Browser storage may be full or disabled. Try a smaller photo.'); return false; }
+const dateLabel=formatEventDate;
+let categoryNames=[...CATEGORIES],user=null,items=[],mine=false,photoData='',photoBusy=false,toastTimer,authMode='login',afterAuth=null,activeItemId=null,detailTicket=0;
+function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,7000);}
+function errorToast(error){toast(error.message||'Please try again.');}
+function options(id,values){for(const value of values){const option=document.createElement('option');option.value=value;option.textContent=value;$(id).append(option);}}
+for(const id of ['category','report-category'])options(id,CATEGORIES);
+for(const id of ['location','report-location'])options(id,LOCATIONS);
+$('date').value=TODAY;$('date').max=TODAY;$('hero-bag').innerHTML=illustration('bag');updateGuidePhoto();
+function updateGuidePhoto(){
+  $('guide-photo').innerHTML=visual({id:'draft',title:'your item',photo:photoData});
+  $('guide-photo-caption').textContent=photoData?'Your photo preview':'Add a photo to preview your item.';
 }
-function toast(message) { clearTimeout(toastTimer); $('toast').textContent=message; $('toast').hidden=false; toastTimer=setTimeout(()=>$('toast').hidden=true,7000); }
-function fillOptions(id,list) { list.forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=value;$(id).append(option);}); }
-for(const id of ['category','report-category']) fillOptions(id,CATEGORIES);
-for(const id of ['location','report-location']) fillOptions(id,LOCATIONS);
-$('date').value=TODAY; $('date').max=TODAY;
-$('hero-bag').innerHTML=illustration('bag'); $('guide-keys').innerHTML=illustration('keys');
-function updateMyCount(){ $('my-count').textContent=state.myIds.length; }
-function render() {
-  const items=filterItems(state.items,{query:$('search').value,category:$('category').value,location:$('location').value,status:$('status').value,mine,myIds:state.myIds});
+function updateAccount(){
+  $('guest-actions').hidden=!!user;$('user-actions').hidden=!user;
+  $('account-label').textContent=user?`Hi, ${user.name}. ${user.isAdmin?'Coordinator account.':'Your campus account is ready.'}`:'Sign in to post items and view contact details.';
+  $('my-count').textContent=user?items.filter(i=>i.userId===user.id).length:0;
+  $('report-login-note').hidden=!!user;
+  $('coordinator-btn').innerHTML=(user?.isAdmin?'Coordinator desk':'Manage reports')+' <span aria-hidden="true">↗</span>';
+  if(user){if(!$('contact-name').value)$('contact-name').value=user.name;if(!$('contact-email').value)$('contact-email').value=user.email;}
+}
+function render(){
+  const shown=filterItems(items,{query:$('search').value,category:$('category').value,location:$('location').value,reportType:$('status').value,mine,myIds:user?items.filter(i=>i.userId===user.id).map(i=>i.id):[]});
   $('list-title').textContent=mine?'Your good deeds, all in one place.':'Your things might be here.';
-  $('list-subtitle').textContent=mine?'Reports you added in this browser. Use the filters to find one.':'Browse recent finds or narrow down your search.';
-  $('result-count').textContent=`${items.length} ${items.length===1?'item':'items'} ${mine?'in your reports':'on the noticeboard'}`;
-  $('items-grid').innerHTML=items.map(item=>`<button class="item-card" data-item="${esc(item.id)}" aria-label="View ${esc(item.title)}, ${esc(item.location)}, ${item.status==='returned'?'returned':'available to claim'}"><div class="item-visual tone-${esc(item.tone || 'sage')}">${visual(item)}${item.sample?'<span class="sample-tag">SAMPLE</span>':''}</div><div class="card-body"><div class="card-meta"><span class="status-pill ${item.status==='returned'?'returned':''}">${item.status==='returned'?'RETURNED':'FOUND'}</span><span class="card-date">${dateLabel(item.date)}</span></div><h3>${esc(item.title)}</h3><div class="card-location">${pin}${esc(item.location)}</div><div class="card-bottom"><span>${esc(item.category)}</span><span aria-hidden="true">↗</span></div></div></button>`).join('');
-  $('empty-state').hidden=items.length>0;
-  if(mine && !state.myIds.length) $('empty-state').innerHTML='<div aria-hidden="true">＋</div><h3>Your first good deed starts here.</h3><p>You haven’t added a report in this browser yet.</p><button class="button light" id="first-report">Report a found item</button>';
-  else $('empty-state').innerHTML='<div aria-hidden="true">⌕</div><h3>No items found yet.</h3><p>Try fewer words or a different category and location.</p><button class="button light" id="empty-reset">Clear search & filters</button>';
+  $('list-subtitle').textContent=mine?'Reports saved to your account.':'Browse recent finds or narrow down your search.';
+  $('result-count').textContent=`${shown.length} ${shown.length===1?'item':'items'} ${mine?'in your reports':'on the noticeboard'}`;
+  const previousIds=new Set(Array.from($('items-grid').children,card=>card.dataset.item));
+  $('items-grid').innerHTML=shown.map(item=>`<button class="item-card${previousIds.has(String(item.id))?'':' item-enter'}" data-item="${esc(item.id)}" aria-label="View ${esc(item.title)}, ${esc(item.location)}"><div class="item-visual tone-${esc(item.tone||'sage')}">${visual(item)}${item.sample?'<span class="sample-tag">SAMPLE</span>':''}</div><div class="card-body"><div class="card-meta"><span class="status-pill ${item.reportType==='lost'?'lost':''}">${item.reportType==='lost'?'LOST':'FOUND'}</span><span class="card-date">${dateLabel(item.date)}</span></div><h3>${esc(item.title)}</h3><div class="card-location">${pin}${esc(item.location)}</div><div class="card-bottom"><span>${esc(item.category)}${item.status==='returned'?' · Returned':''}</span><span aria-hidden="true">↗</span></div></div></button>`).join('');
+  $('empty-state').hidden=shown.length>0;
+  $('empty-state').innerHTML=mine&&!items.some(i=>i.userId===user?.id)?'<div aria-hidden="true">＋</div><h3>No reports in your account yet.</h3><p>Lost or found something? Add a report to the noticeboard.</p><button class="button light" id="first-report">Report an item</button>':'<div aria-hidden="true">⌕</div><h3>No matching items yet.</h3><p>Try fewer words or another location. New reports appear here.</p><button class="button light" id="empty-reset">Clear search & filters</button>';
+  updateAccount();
 }
-function clearFilters(){ $('search').value='';$('category').value='';$('location').value='';$('status').value='available';render(); }
-function setTab(name) {
-  for(const key of ['browse','report']){const selected=key===name;$(key+'-panel').hidden=!selected;$(key+'-tab').setAttribute('aria-selected',String(selected));$(key+'-tab').tabIndex=selected?0:-1;$(key+'-tab').classList.toggle('active',selected);}
+async function refresh(){const result=await api('items');items=result.items;render();}
+async function boot(){
+  $('connection-badge').textContent='CONNECTING';$('connection-message').textContent='Loading the shared campus noticeboard…';$('retry-btn').hidden=true;
+  try{const [account,board,categoryData]=await Promise.all([api('session'),api('items'),api('categories')]);categoryNames=categoryData.categories.map(c=>c.name);for(const id of ['category','report-category']){const select=$(id);while(select.options.length>1)select.remove(1);options(id,categoryNames);}user=account.user;items=board.items;render();$('connection-badge').textContent='CONNECTED';$('connection-message').textContent='Shared campus noticeboard. Photos and reports are saved; contact details are shown after sign-in.';}
+  catch(error){$('connection-badge').textContent='OFFLINE';$('connection-message').textContent=error.message;$('retry-btn').hidden=false;$('result-count').textContent='Could not load listings.';}
 }
-// Navigation keeps an unfinished report in place, so students can return to it.
-function goTab(name,scroll=false){setTab(name);if(scroll)document.querySelector('.workspace').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
-$('browse-tab').addEventListener('click',()=>{mine=false;render();goTab('browse');});
-$('report-tab').addEventListener('click',()=>goTab('report'));
+$('retry-btn').addEventListener('click',boot);
+function goTab(name,scroll=false){for(const key of ['browse','report']){const selected=key===name;$(key+'-panel').hidden=!selected;$(key+'-tab').setAttribute('aria-selected',String(selected));$(key+'-tab').tabIndex=selected?0:-1;$(key+'-tab').classList.toggle('active',selected);}if(scroll)document.querySelector('.workspace').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
+function clearFilters(){for(const id of ['search','category','location'])$(id).value='';$('status').value='';render();}
+$('browse-tab').addEventListener('click',()=>{mine=false;render();goTab('browse');});$('report-tab').addEventListener('click',()=>goTab('report'));
 document.querySelector('.workspace-tabs').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const name=event.key==='Home'?'browse':event.key==='End'?'report':$('browse-tab').getAttribute('aria-selected')==='true'?'report':'browse';goTab(name);$(name+'-tab').focus();});
-for(const id of ['header-report','hero-report']) $(id).addEventListener('click',()=>goTab('report',true));
+for(const id of ['header-report','hero-report'])$(id).addEventListener('click',()=>goTab('report',true));
 $('hero-find').addEventListener('click',()=>{mine=false;render();goTab('browse',true);$('search').focus({preventScroll:true});});
-document.querySelector('.brand').addEventListener('click',event=>{event.preventDefault();mine=false;clearFilters();goTab('browse');window.scrollTo({top:0,behavior:'smooth'});});
+document.querySelector('.brand').addEventListener('click',event=>{event.preventDefault();mine=false;clearFilters();goTab('browse');window.scrollTo({top:0,behavior:'auto'});});
 $('cancel-report').addEventListener('click',()=>{mine=false;render();goTab('browse');$('browse-tab').focus();});
-$('my-btn').addEventListener('click',()=>{mine=true;clearFilters();$('status').value='';render();goTab('browse',true);});
-$('clear-filters').addEventListener('click',clearFilters);
-$('results-reset').addEventListener('click',clearFilters);
-$('search').addEventListener('input',render);
-$('search-form').addEventListener('submit',event=>{event.preventDefault();render();});
-for(const id of ['category','location','status']) $(id).addEventListener('change',render);
+$('my-btn').addEventListener('click',()=>{if(!user){openAuth('login',()=>{$('my-btn').click();});return;}mine=true;clearFilters();$('status').value='';render();goTab('browse',true);});
+for(const id of ['clear-filters','results-reset'])$(id).addEventListener('click',clearFilters);
+$('search').addEventListener('input',render);$('search-form').addEventListener('submit',event=>{event.preventDefault();render();});
+for(const id of ['category','location','status'])$(id).addEventListener('change',render);
 $('empty-state').addEventListener('click',event=>{if(event.target.closest('#empty-reset'))clearFilters();if(event.target.closest('#first-report'))goTab('report');});
 $('items-grid').addEventListener('click',event=>{const card=event.target.closest('[data-item]');if(card)openItem(card.dataset.item);});
-for(const dialog of document.querySelectorAll('dialog')) {
-  dialog.querySelector('[data-close]').addEventListener('click',()=>dialog.close());
-  dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});
+for(const dialog of document.querySelectorAll('dialog')){dialog.querySelector('[data-close]').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});}
+
+function openAuth(mode='login',continuation=null){
+  authMode=mode;afterAuth=continuation;
+  $('auth-title').textContent=mode==='register'?'Join your campus noticeboard.':'Welcome back.';$('auth-name-wrap').hidden=mode!=='register';$('auth-name').required=mode==='register';
+  $('auth-submit').textContent=mode==='register'?'Create account':'Sign in';$('auth-switch').textContent=mode==='register'?'Already registered? Sign in':'New here? Create an account';
+  $('auth-password').autocomplete=mode==='register'?'new-password':'current-password';$('auth-password').value='';$('auth-error').hidden=true;
+  for(const key of ['name','email','password']){$('auth-'+key+'-error').textContent='';$('auth-'+key).removeAttribute('aria-invalid');}
+  if(!$('auth-dialog').open)$('auth-dialog').showModal();
 }
-function openItem(id){
-  const item=state.items.find(i=>i.id===id); if(!item)return; activeItemId=id;
-  const flagged=state.flags.includes(id);
-  $('detail-content').innerHTML=`<div class="dialog-visual tone-${esc(item.tone || 'sage')}">${visual(item)}</div><div class="dialog-body"><div class="eyebrow">${item.sample?'DEMONSTRATION LISTING':'YOUR LOCAL REPORT'}</div><h2 id="detail-title">${esc(item.title)}</h2><span class="status-pill ${item.status==='returned'?'returned':''}">${item.status==='returned'?'RETURNED TO OWNER':'AVAILABLE TO CLAIM'}</span><dl class="detail-facts"><div><dt>Found at</dt><dd>${esc(item.location)}</dd></div><div><dt>Date found</dt><dd>${dateLabel(item.date)} ${item.date.slice(0,4)}</dd></div><div><dt>Category</dt><dd>${esc(item.category)}</dd></div><div><dt>Handover</dt><dd>${item.handover==='Campus staff'?'With campus staff':'Kept safely by finder'}</dd></div></dl><p class="dialog-description">${esc(item.description)}</p><div class="detail-actions" style="margin-top:22px">${item.status==='available'?'<button class="button" id="claim-btn">This might be mine <span aria-hidden="true">→</span></button>':'<span class="dialog-description">This item has found its way home.</span>'}<button class="clear-link" id="flag-btn">${flagged?'Flag saved (demo)':'Report this listing'}</button></div><p class="dialog-hint">Confirm one identifying detail before arranging a safe return.</p><div id="claim-area"></div></div>`;
-  if(item.status==='available') $('claim-btn').addEventListener('click',showClaim);
-  $('flag-btn').addEventListener('click',()=>{if(save(flagItem(state,id))){$('flag-btn').textContent='Flag saved (demo)';toast('Listing flagged in this browser’s coordinator demo.');}});
-  if(!$('detail-dialog').open)$('detail-dialog').showModal();
+$('login-btn').addEventListener('click',()=>openAuth('login'));$('register-btn').addEventListener('click',()=>openAuth('register'));
+$('auth-switch').addEventListener('click',()=>openAuth(authMode==='login'?'register':'login',afterAuth));
+$('auth-form').addEventListener('submit',async event=>{
+  event.preventDefault();const button=$('auth-submit');button.disabled=true;$('auth-error').hidden=true;
+  for(const key of ['name','email','password']){$('auth-'+key+'-error').textContent='';$('auth-'+key).removeAttribute('aria-invalid');}
+  try{const result=await api(authMode,{method:'POST',data:{name:$('auth-name').value,email:$('auth-email').value,password:$('auth-password').value}});user=result.user;$('auth-password').value='';$('auth-dialog').close();await refresh();toast(authMode==='register'?'Account created. You are signed in.':'Signed in successfully.');const continuation=afterAuth;afterAuth=null;if(continuation)await continuation();}
+  catch(error){$('auth-error').textContent=error.message;$('auth-error').hidden=false;for(const [key,message] of Object.entries(error.errors||{})){if($('auth-'+key+'-error')){$('auth-'+key+'-error').textContent=message;$('auth-'+key).setAttribute('aria-invalid','true');}}}
+  finally{button.disabled=false;}
+});
+$('logout-btn').addEventListener('click',async()=>{try{await api('logout',{method:'POST'});user=null;mine=false;for(const id of ['detail-dialog','coordinator-dialog'])if($(id).open)$(id).close();for(const id of ['contact-name','contact-email','contact-phone','contact-telegram'])$(id).value='';$('contact-consent').checked=false;await refresh();toast('Signed out.');}catch(error){errorToast(error);}});
+async function deleteReport(id,title){
+  if(!window.confirm(`Delete this report?\n\n${title}\n\nThe report, its photo and saved claims will be permanently removed.`))return false;
+  await api('delete',{method:'POST',data:{itemId:id}});
+  if(activeItemId===id){++detailTicket;activeItemId=null;if($('detail-dialog').open)$('detail-dialog').close();$('my-btn').focus();}
+  items=items.filter(item=>item.id!==id);render();toast('Report deleted.');return true;
+}
+function contactMarkup(item){
+  if(item.sample)return '<div class="contact-box"><strong>Sample listing</strong><p>No real contact person is attached to this example.</p></div>';
+  if(!item.contact)return '<div class="contact-box"><strong>Contact the person who posted this</strong><p>Sign in to view their contact name, email, phone or Telegram.</p><button class="button light" id="contact-signin">Sign in to view contacts</button></div>';
+  const c=item.contact;
+  return `<div class="contact-box"><h3>Contact the ${item.reportType==='lost'?'owner':'finder'}</h3><p class="contact-person">${esc(c.name)}</p><a href="mailto:${esc(c.email)}">${esc(c.email)}</a>${c.phone?`<a href="tel:${esc(c.phone.replace(/[^+0-9]/g,''))}">${esc(c.phone)}</a>`:''}${c.telegram?`<a href="https://t.me/${encodeURIComponent(c.telegram)}" target="_blank" rel="noopener noreferrer">Telegram: @${esc(c.telegram)}</a>`:''}<small>Contact details are provided by the poster. Meet on campus and confirm an identifying detail.</small></div>`;
+}
+async function openItem(id){
+  const ticket=++detailTicket;
+  try{
+    const {item}=await api('item',{id});if(ticket!==detailTicket)return;activeItemId=id;
+    $('detail-content').innerHTML=`<div class="dialog-visual tone-${esc(item.tone||'sage')}">${visual(item)}</div><div class="dialog-body"><div class="eyebrow">${item.sample?'SAMPLE LISTING':'CAMPUS NOTICEBOARD'}</div><h2 id="detail-title">${esc(item.title)}</h2><span class="status-pill ${item.reportType==='lost'?'lost':''}">${item.reportType==='lost'?'LOST':'FOUND'}</span><dl class="detail-facts"><div><dt>${item.reportType==='lost'?'Last seen at':'Found at'}</dt><dd>${esc(item.location)}</dd></div><div><dt>${item.reportType==='lost'?'Date lost':'Date found'}</dt><dd>${dateLabel(item.date)} ${item.date.slice(0,4)}${item.eventTime?' · '+esc(item.eventTime):' · Time not specified'}</dd></div><div><dt>Category</dt><dd>${esc(item.category)}</dd></div><div><dt>${item.reportType==='lost'?'Return preference':'Handover'}</dt><dd>${!item.handover?'Not specified':item.reportType==='lost'?(item.handover==='Campus staff'?'Through campus staff':'Arrange with the owner'):(item.handover==='Campus staff'?'With campus staff':'Kept safely by finder')}</dd></div></dl><p class="dialog-description">${esc(item.description)}</p>${item.status==='returned'?'<p class="resolved-note">This item has been returned to its owner.</p>':''}${contactMarkup(item)}<div class="detail-actions" style="margin-top:22px">${item.status==='available'&&!item.sample?item.canManage?'<button class="button" id="owner-return">Mark as returned</button>':item.reportType==='lost'?'<span class="dialog-description">Found it? Contact the owner above.</span>':'<button class="button" id="claim-btn">This might be mine <span aria-hidden="true">→</span></button>':'<span class="dialog-description">'+(item.status==='returned'?'This item has found its way home.':'Example item for the project.')+'</span>'}${item.canManage?'<button class="button light danger" id="delete-report">Delete report</button>':''}<button class="clear-link" id="flag-btn">${item.flagged?'Flag submitted':'Report this listing'}</button></div><div id="claim-area"></div></div>`;
+    $('contact-signin')?.addEventListener('click',()=>openAuth('login',()=>openItem(id)));
+    $('claim-btn')?.addEventListener('click',()=>{if(!user){openAuth('login',async()=>{await openItem(id);showClaim();});return;}showClaim();});
+    $('owner-return')?.addEventListener('click',async event=>{event.target.disabled=true;try{await api('returned',{method:'POST',data:{itemId:id}});await refresh();await openItem(id);toast('Item marked as returned.');}catch(error){event.target.disabled=false;errorToast(error);}});
+    $('delete-report')?.addEventListener('click',async event=>{const button=event.target;button.disabled=true;try{await deleteReport(id,item.title);}catch(error){errorToast(error);}finally{button.disabled=false;}});
+    $('flag-btn').addEventListener('click',async event=>{if(!user){openAuth('login',()=>openItem(id));return;}const button=event.target;button.disabled=true;try{await api('flag',{method:'POST',data:{itemId:id}});button.textContent='Flag submitted';toast('Listing reported to the coordinator.');}catch(error){errorToast(error);}finally{button.disabled=false;}});
+    if(!$('detail-dialog').open)$('detail-dialog').showModal();
+  }catch(error){errorToast(error);}
 }
 function showClaim(){
-  $('claim-btn').disabled=true;
-  $('claim-area').innerHTML='<form class="claim-form" id="claim-form" novalidate><h3>Help confirm it’s yours</h3><p>Demo only. No email or claim is sent to anyone.</p><label for="proof">A detail only the owner would know *</label><textarea id="proof" rows="3" maxlength="400" required placeholder="e.g. Brand, engraving or something inside the bag" aria-describedby="proof-error"></textarea><small class="field-error" id="proof-error"></small><label for="claim-email">Your university email *</label><input id="claim-email" type="email" required maxlength="150" placeholder="Your university email" aria-describedby="email-error"><small class="field-error" id="email-error"></small><div class="form-actions"><button type="button" class="button light" id="claim-cancel">Cancel</button><button type="submit" class="button">Save demo claim</button></div></form>';
-  $('proof').focus();
+  if(!$('claim-btn')||!user)return;$('claim-btn').disabled=true;
+  $('claim-area').innerHTML=`<form class="claim-form" id="claim-form" novalidate><h3>Help confirm it’s yours</h3><p>Your claim is saved for the finder and coordinator. No email is sent automatically.</p><label for="proof">A detail only the owner would know *</label><textarea id="proof" rows="3" maxlength="400" required placeholder="Brand, engraving or something inside the bag" aria-describedby="proof-error"></textarea><small class="field-error" id="proof-error"></small><p>Reply email: ${esc(user.email)}</p><div id="claim-error" class="error-summary" role="alert" hidden></div><div class="form-actions"><button type="button" class="button light" id="claim-cancel">Cancel</button><button type="submit" class="button" id="claim-submit">Send claim</button></div></form>`;$('proof').focus();
   $('claim-cancel').addEventListener('click',()=>{$('claim-area').innerHTML='';$('claim-btn').disabled=false;$('claim-btn').focus();});
-  $('claim-form').addEventListener('submit',event=>{
-    event.preventDefault();
-    const result=createClaim(state,activeItemId,{proof:$('proof').value,email:$('claim-email').value});
-    for(const key of ['proof','email']){const input=$(key==='email'?'claim-email':'proof');$(key+'-error').textContent=result.errors?.[key] || '';input.setAttribute('aria-invalid',String(!!result.errors?.[key]));}
-    if(result.errors){if(result.errors.item)toast(result.errors.item);else $(result.errors.proof?'proof':'claim-email').focus();return;}
-    if(save(result.state)){$('claim-area').innerHTML='<div class="success-box" tabindex="-1" id="claim-success"><strong>Demo claim saved ✓</strong>Your details are saved in this browser’s coordinator view. No message was sent. A real service would let staff verify the claim before sharing collection instructions.</div>';$('claim-success').focus();}
-  });
+  $('claim-form').addEventListener('submit',async event=>{event.preventDefault();$('claim-submit').disabled=true;try{await api('claim',{method:'POST',data:{itemId:activeItemId,proof:$('proof').value}});$('claim-area').innerHTML='<div class="success-box" tabindex="-1" id="claim-success"><strong>Claim sent ✓</strong>The finder can now read your identifying detail and reply email in Manage reports. You can also use the contact details above to arrange a safe return.</div>';$('claim-success').focus();}catch(error){$('claim-submit').disabled=false;$('claim-error').textContent=error.message;$('claim-error').hidden=false;$('proof-error').textContent=error.errors?.proof||'';}});
 }
-function clearReportErrors(){for(const key of ['title','category','location','date','description','handover','consent','photo'])$(key+'-error').textContent='';$('report-errors').hidden=true;for(const field of $('report-form').querySelectorAll('[aria-invalid]'))field.removeAttribute('aria-invalid');}
-function showReportErrors(errors){
-  clearReportErrors(); const fieldIds={title:'title',category:'report-category',location:'report-location',date:'date',description:'description',handover:'handover',consent:'consent',photo:'photo'};
-  $('report-errors').textContent='Please check the highlighted fields before adding your item.';$('report-errors').hidden=false;
-  for(const [key,message] of Object.entries(errors)){if($(key+'-error'))$(key+'-error').textContent=message;if($(fieldIds[key]))$(fieldIds[key]).setAttribute('aria-invalid','true');}
-  const first=fieldIds[Object.keys(errors)[0]]; if(first)$(first).focus();
+const reportFields={reportType:'report-type',title:'title',category:'report-category',location:'report-location',date:'date',eventTime:'event-time',description:'description',handover:'handover',consent:'consent',photo:'photo',contactName:'contact-name',contactEmail:'contact-email',contactPhone:'contact-phone',contactTelegram:'contact-telegram',contactConsent:'contact-consent'};
+function clearReportErrors(){for(const key of Object.keys(reportFields))$(key+'-error').textContent='';$('report-errors').hidden=true;for(const field of $('report-form').querySelectorAll('[aria-invalid]'))field.removeAttribute('aria-invalid');}
+function showReportErrors(errors,message='Please check the highlighted fields.'){
+  clearReportErrors();$('report-errors').textContent=message;$('report-errors').hidden=false;
+  for(const [key,message] of Object.entries(errors)){if($(key+'-error'))$(key+'-error').textContent=message;if($(reportFields[key]))$(reportFields[key]).setAttribute('aria-invalid','true');}
+  const first=reportFields[Object.keys(errors)[0]];if(first)$(first).focus();
 }
+function updateReportType(){
+  const lost=$('report-type').value==='lost';
+  $('report-heading').textContent=lost?'Lost something on campus?':'Found something on campus?';
+  $('report-intro-title').textContent=lost?'Tell us what you lost':'Tell us what you found';
+  $('event-time-label').innerHTML=(lost?'Time lost':'Time found')+' <span>*</span>';
+  $('date-label').innerHTML=(lost?'Date lost':'Date found')+' <span>*</span>';
+  $('report-location-label').innerHTML=(lost?'Where did you last see it?':'Where did you find it?')+' <span>*</span>';
+  $('contact-legend').textContent=lost?'How can the finder contact you?':'Who should the owner contact?';
+  $('handover-label').innerHTML=(lost?'Preferred return method':'Safe handover')+' <span>*</span>';
+  const choices=$('handover').options;
+  choices[0].textContent=lost?'Return through campus staff':'I handed it to campus staff';
+  choices[1].textContent=lost?'Contact me to arrange collection':'I will keep it safely until collection';
+  $('description').placeholder=lost?'Describe the item and where you last saw it. Keep one identifying detail private.':'Colour, item type and where it was left. Keep one identifying detail private for the owner to confirm.';
+}
+$('report-type').addEventListener('change',updateReportType);
+updateReportType();
 $('description').addEventListener('input',()=>$('description-count').textContent=`${$('description').value.length} / 600`);
-function removePhoto(){photoData='';$('photo').value='';$('photo-preview').hidden=true;$('photo-preview').innerHTML='';$('remove-photo').hidden=true;$('photo-error').textContent='';$('photo').removeAttribute('aria-invalid');}
+function removePhoto(){photoData='';updateGuidePhoto();$('photo').value='';$('photo-preview').hidden=true;$('photo-preview').innerHTML='';$('remove-photo').hidden=true;$('photo-error').textContent='';$('photo').removeAttribute('aria-invalid');}
 $('remove-photo').addEventListener('click',removePhoto);
 $('photo').addEventListener('change',async()=>{
-  photoData='';$('photo-preview').hidden=true;$('remove-photo').hidden=true;$('photo-error').textContent='';$('photo').removeAttribute('aria-invalid');
-  const file=$('photo').files[0];if(!file)return;
+  photoData='';updateGuidePhoto();$('photo-preview').hidden=true;$('remove-photo').hidden=true;$('photo-error').textContent='';$('photo').removeAttribute('aria-invalid');const file=$('photo').files[0];if(!file)return;
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024){$('photo-error').textContent='Choose a JPG, PNG or WebP image under 2 MB.';$('photo').setAttribute('aria-invalid','true');$('photo').value='';return;}
-  photoBusy=true;$('submit-report').disabled=true;$('photo').disabled=true;
-  let url;
-  try{
-    url=URL.createObjectURL(file);const image=new Image();image.src=url;await image.decode();
-    const canvas=document.createElement('canvas'),scale=Math.min(1,800/Math.max(image.width,image.height));canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);photoData=canvas.toDataURL('image/jpeg',.75);
-    $('photo-preview').innerHTML=`<img src="${photoData}" alt="Preview of your found-item photo">`;$('photo-preview').hidden=false;$('remove-photo').hidden=false;
-  }catch{$('photo-error').textContent='This image could not be opened. Choose another photo.';$('photo').value='';}
+  photoBusy=true;$('submit-report').disabled=true;$('photo').disabled=true;let url;
+  try{url=URL.createObjectURL(file);const image=new Image();image.src=url;await image.decode();const canvas=document.createElement('canvas'),scale=Math.min(1,800/Math.max(image.width,image.height));canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);const webp=canvas.toDataURL('image/webp',.8);photoData=webp.startsWith('data:image/webp;')?webp:canvas.toDataURL('image/jpeg',.75);updateGuidePhoto();$('photo-preview').innerHTML=`<img src="${photoData}" alt="Preview of your item photo">`;$('photo-preview').hidden=false;$('remove-photo').hidden=false;}
+  catch{$('photo-error').textContent='This image could not be opened. Choose another photo.';$('photo').value='';}
   finally{if(url)URL.revokeObjectURL(url);photoBusy=false;$('submit-report').disabled=false;$('photo').disabled=false;}
 });
-$('report-form').addEventListener('submit',event=>{
+$('report-form').addEventListener('submit',async event=>{
   event.preventDefault();if(photoBusy)return;
-  const data={title:$('title').value,category:$('report-category').value,location:$('report-location').value,date:$('date').value,description:$('description').value,handover:$('handover').value,consent:$('consent').checked,photo:photoData};
-  const result=createReport(state,data,crypto.randomUUID());
-  if(result.errors){showReportErrors(result.errors);return;}
-  if(!save(result.state))return;
-  clearReportErrors();$('report-form').reset();$('date').value=TODAY;$('description-count').textContent='0 / 600';removePhoto();mine=false;clearFilters();goTab('browse',true);openItem(result.item.id);toast('Found item added ✓ You can find it in My reports.');
+  if(!user){openAuth('login',()=>{goTab('report',true);$('submit-report').focus();});return;}
+  const data={reportType:$('report-type').value,title:$('title').value,category:$('report-category').value,location:$('report-location').value,date:$('date').value,eventTime:$('event-time').value,description:$('description').value,handover:$('handover').value,consent:$('consent').checked,photo:photoData,contactName:$('contact-name').value,contactEmail:$('contact-email').value,contactPhone:$('contact-phone').value,contactTelegram:$('contact-telegram').value,contactConsent:$('contact-consent').checked};
+  const errors=validateReport(data,TODAY,categoryNames);if(!data.eventTime)errors.eventTime='Choose the time the item was lost or found.';if(Object.keys(errors).length){showReportErrors(errors);return;}
+  $('submit-report').disabled=true;$('submit-report').textContent='Saving…';
+  try{const result=await api('items',{method:'POST',data});clearReportErrors();$('report-form').reset();updateReportType();$('date').value=TODAY;$('description-count').textContent='0 / 600';removePhoto();mine=false;await refresh();clearFilters();goTab('browse',true);await openItem(result.item.id);toast('Report published. Your photo and contacts are saved.');}
+  catch(error){if(error.status===401){user=null;updateAccount();openAuth('login');}else showReportErrors(error.errors||{},error.message);}
+  finally{$('submit-report').disabled=false;$('submit-report').innerHTML='Publish report <span aria-hidden="true">→</span>';}
 });
-const howContent=`<div class="info-body"><div class="eyebrow">A SMALL ACT OF CAMPUS KINDNESS</div><h2 id="info-title">From lost to found.</h2><p>One place to look, one simple way to help.</p><ol><li><strong>Lost something?</strong> Search the noticeboard. Filter by category or the place you last saw it.</li><li><strong>Recognise it?</strong> Open a card to check the photo, date and description. Choose “This might be mine” and describe a detail only the owner would know.</li><li><strong>Found something?</strong> Add a short report, with a photo if you have one. Keep personal information out of the post.</li><li><strong>Give it back safely.</strong> In the planned service, campus staff would check the claim and help arrange collection.</li></ol><div class="note-block">This Stage 1 prototype uses sample listings. Reports, claims and flags are stored only in this browser. Claims do not send emails, and the coordinator view is a simulation.</div><button class="button" id="how-start" style="margin-top:22px">Search the noticeboard <span aria-hidden="true">→</span></button></div>`;
-$('how-btn').addEventListener('click',()=>{$('info-content').innerHTML=howContent;$('info-dialog').showModal();$('how-start').addEventListener('click',()=>{$('info-dialog').close();mine=false;render();goTab('browse',true);$('search').focus({preventScroll:true});});});
-$('project-btn').addEventListener('click',()=>{
-  $('info-content').innerHTML=`<div class="info-body"><div class="eyebrow">AITU · ICT PROJECT STAGE 1</div><h2 id="info-title">Designed around students.</h2><p>Team: Alua, Arailym and Adiya. This interactive interface supports the project’s two key tasks and its planned user groups.</p><div class="info-stats"><div><b>102</b><span>Student Survey responses</span></div><div><b>54</b><span>Chose search as the most useful feature</span></div><div><b>36</b><span>Do not know where to report an item</span></div></div><p style="margin-top:15px;font-size:11px">Survey export, 4–5 October 2026. 71 respondents have lost an item; 68 have found one. 90 selected “Definitely yes” or “Probably yes” to using this service (88.2%). One additional response was conditional.</p><h3>Two user groups</h3><ul><li><strong>Students:</strong> find their belongings, post found items and provide identifying details for a claim.</li><li><strong>Campus coordinator:</strong> review flagged listings and demo claims, and mark an item as returned.</li></ul><h3>Prototype scope</h3><table class="scope-table"><thead><tr><th>Included here</th><th>Planned / outside this prototype</th></tr></thead><tbody><tr><td>Search, categories, campus locations and status filters</td><td>Automatic matching and notifications</td></tr><tr><td>Item details, photo upload, found-item form and My reports</td><td>Shared database and university sign-in</td></tr><tr><td>Local claim, flag and coordinator demonstrations</td><td>Real messaging, identity checks and physical delivery</td></tr></tbody></table><h3>Part D: screen annotations</h3><ul><li><strong>Find my item:</strong> recognition rather than recall (visible photos and categories); user control and freedom (filters, reset and closing details).</li><li><strong>Report a found item:</strong> error prevention (required fields and date validation); visibility of system status (field errors and save confirmation).</li><li><strong>Accessibility:</strong> labelled controls, keyboard tabs, visible focus, native modal focus handling and a responsive layout for a 360 px phone. Form controls and main actions have at least 44 px touch targets.</li></ul><h3>Proposed success checks</h3><ul><li>Find a sample item using a keyword and location filter.</li><li>Complete a valid found-item report, then reopen it from My reports.</li><li>Use both screens at 360 px width without horizontal page scrolling.</li></ul><div class="note-block">Stage 1 asks for a concept, requirements and architecture. This optional prototype demonstrates the interface. Sites provides private cloud hosting; the planned shared data service and campus authentication belong to Stage 2.</div><button class="button light" id="project-coordinator" style="margin-top:20px">Open coordinator demo <span aria-hidden="true">→</span></button></div>`;
-  $('info-dialog').showModal();$('project-coordinator').addEventListener('click',()=>{$('info-dialog').close();openCoordinator();});
-});
-function openCoordinator(){
-  $('coordinator-content').innerHTML=`<div class="info-body"><div class="eyebrow">LOCAL SIMULATION · NO STAFF ACCOUNT</div><h2 id="coordinator-title">Coordinator desk.</h2><p>Review this browser’s reports and claims. In the planned service, only authorised campus staff could use this screen.</p><h3>Demo claims (${state.claims.length})</h3>${state.claims.length?state.claims.map(claim=>`<div class="coordinator-claim"><strong>${esc(state.items.find(i=>i.id===claim.itemId)?.title || 'Item')}</strong><p>${esc(claim.proof)}</p><p>Contact: ${esc(claim.email)}</p></div>`).join(''):'<p class="dialog-description">No claims yet. Open an available item and save a demo claim.</p>'}<h3>Flagged listings (${state.flags.length})</h3>${state.flags.length?state.flags.map(id=>`<p class="coordinator-claim">${esc(state.items.find(i=>i.id===id)?.title || 'Unknown item')} · flagged for review</p>`).join(''):'<p class="dialog-description">No listings flagged in this browser.</p>'}<h3>Item handovers</h3>${state.items.map(item=>`<div class="coordinator-row"><div><strong>${esc(item.title)}</strong><p>${esc(item.location)} · ${item.status==='returned'?'Returned':'Available'}${item.sample?' · Sample':''}</p></div>${item.status==='available'?`<button class="button light" data-return="${esc(item.id)}">Mark returned</button>`:'<span class="status-pill returned">RETURNED</span>'}</div>`).join('')}<div class="note-block">This changes only your local demonstration. A real service would verify ownership before confirming a handover.</div></div>`;
-  if(!$('coordinator-dialog').open)$('coordinator-dialog').showModal();
+$('how-btn').addEventListener('click',()=>{$('info-content').innerHTML='<div class="info-body"><div class="eyebrow">A SMALL ACT OF CAMPUS KINDNESS</div><h2 id="info-title">From lost to found.</h2><ol><li><strong>Search:</strong> browse the shared noticeboard and filter by category or campus location.</li><li><strong>Sign in:</strong> create an account to post items, view contacts and make claims.</li><li><strong>Post a report:</strong> choose Lost or Found, then add a description, photo and the contact details you want to share with signed-in users.</li><li><strong>Reconnect:</strong> contact the finder or send an identifying detail. The finder can read claims in Manage reports.</li><li><strong>Confirm the return:</strong> the poster or coordinator marks the listing returned.</li></ol><div class="note-block">Accounts, listings and photos are saved to a shared database. No emails are sent automatically. Account emails and university affiliation are not verified.</div></div>';$('info-dialog').showModal();});
+$('project-btn').addEventListener('click',()=>{$('info-content').innerHTML='<div class="info-body"><div class="eyebrow">AITU LOST &amp; FOUND</div><h2 id="info-title">About this service.</h2><p>Find lost items and report things you have found on campus.</p><ul><li>Search by item name, category or location.</li><li>Sign in to post, manage your reports and view contact details.</li><li>Contact the person and confirm the item’s identifying details.</li><li>Arrange collection on campus.</li></ul><div class="note-block">Listings marked <strong>Sample</strong> are coursework examples. Keep personal ID numbers out of descriptions and photos.</div></div>';$('info-dialog').showModal();});
+async function openManager(){
+  if(!user){openAuth('login',openManager);return;}
+  try{const data=await api('manage');$('coordinator-content').innerHTML=`<div class="info-body"><div class="eyebrow">${data.isAdmin?'COORDINATOR':'YOUR ACCOUNT'}</div><h2 id="coordinator-title">${data.isAdmin?'Coordinator desk.':'Manage your reports.'}</h2><p>View claims on ${data.isAdmin?'campus':'your'} listings and confirm completed returns.</p><h3>Claims (${data.claims.length})</h3>${data.claims.length?data.claims.map(c=>`<div class="coordinator-claim"><strong>${esc(c.title)}</strong><p>${esc(c.proof)}</p><p>Reply: <a href="mailto:${esc(c.email)}">${esc(c.email)}</a></p></div>`).join(''):'<p class="dialog-description">No claims to review yet.</p>'}${data.isAdmin?`<h3>Flagged listings (${data.flags.length})</h3>${data.flags.map(f=>`<p class="coordinator-claim">${esc(f.title)} · ${Number(f.count)} report(s)</p>`).join('')||'<p class="dialog-description">No flagged listings.</p>'}`:''}<h3>Reports</h3>${data.items.map(item=>`<div class="coordinator-row"><div><strong>${esc(item.title)}</strong><p>${esc(item.location)} · ${item.reportType==='lost'?'Lost':'Found'}${item.status==='returned'?' · Returned':''}</p></div><div class="report-row-actions">${item.status==='available'?`<button class="button light" data-return="${esc(item.id)}">Mark returned</button>`:'<span class="status-pill returned">RETURNED</span>'}<button class="button light danger" data-delete="${esc(item.id)}" data-title="${esc(item.title)}">Delete report</button></div></div>`).join('')||'<p class="dialog-description">Your reports will appear here.</p>'}<div class="note-block">Confirm ownership and the physical handover before marking an item returned.</div></div>`;if(!$('coordinator-dialog').open)$('coordinator-dialog').showModal();}catch(error){errorToast(error);}
 }
-$('coordinator-btn').addEventListener('click',openCoordinator);
-$('coordinator-content').addEventListener('click',event=>{const button=event.target.closest('[data-return]');if(button && save(markReturned(state,button.dataset.return))){openCoordinator();render();toast('Item marked as returned in this browser.');}});
-updateMyCount();render();
+$('coordinator-btn').addEventListener('click',openManager);
+$('coordinator-content').addEventListener('click',async event=>{const button=event.target.closest('[data-return],[data-delete]');if(!button)return;button.disabled=true;try{if(button.dataset.delete){if(await deleteReport(button.dataset.delete,button.dataset.title))await openManager();}else{await api('returned',{method:'POST',data:{itemId:button.dataset.return}});await refresh();await openManager();toast('Item marked as returned.');}}catch(error){errorToast(error);}finally{button.disabled=false;}});
+await boot();
