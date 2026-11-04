@@ -13,7 +13,7 @@ async function main(){
   await new Promise((resolve,reject)=>{const probe=createServer();probe.once('error',()=>reject(new Error('The website is still running on port 8000. Close its PowerShell window and run this launcher again.')));probe.listen(8000,'127.0.0.1',()=>probe.close(resolve));});
   if(resolve(source).toLowerCase()!==resolve(target).toLowerCase()){
     for(const dir of ['api','lib','public','scripts','tests','database'])await cp(join(source,dir),join(target,dir),{recursive:true,force:true});
-    for(const name of ['package.json','package-lock.json','server.js','vercel.json','README.md','DEPLOYMENT.md','UPDATE-RU.md','DATABASE-RU.md','IMPORT-ASSIGNMENT3.cmd','UPDATE-WINDOWS.cmd','.env.example','.gitignore'])await cp(join(source,name),join(target,name),{force:true});
+    for(const name of ['package.json','package-lock.json','server.js','vercel.json','README.md','DEPLOYMENT.md','UPDATE-RU.md','UPDATE-PINK-RU.md','DATABASE-RU.md','IMPORT-ASSIGNMENT3.cmd','UPDATE-WINDOWS.cmd','.env.example','.gitignore'])await cp(join(source,name),join(target,name),{force:true});
     console.log('Website files updated. data/, node_modules/ and .env were kept.');
   }
   let installed=true;try{await stat(join(target,'node_modules','@libsql','client'));}catch{installed=false;}

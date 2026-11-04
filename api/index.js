@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { getDb } from '../lib/db.js';
 import { allocateItemId } from '../lib/ids.js';
 import { currentUser, hashPassword, verifyPassword, newSession, sessionCookie, cookieToken, digest, sameOrigin, limit } from '../lib/security.js';
@@ -19,9 +19,9 @@ async function readBody(req) {
   return body;
 }
 const itemFrom='items JOIN categories ON categories.category_id=items.category_id JOIN users AS author ON author.user_id=items.user_id';
-const itemColumns=`items.item_id AS id,items.user_id,items.title,items.report_type,categories.category_name AS category,items.location,items.event_date AS date,items.event_time AS eventTime,items.description,items.handover,items.status,items.sample,items.created_at,EXISTS(SELECT 1 FROM photos WHERE photos.item_id=items.item_id) AS has_photo`;
+const itemColumns=`items.item_id AS id,items.user_id,items.title,items.report_type,categories.category_name AS category,items.location,items.location_details AS locationDetails,items.latitude,items.longitude,items.event_date AS date,items.event_time AS eventTime,items.time_precision AS timePrecision,items.event_time_end AS eventTimeEnd,items.description,items.handover,items.status,items.sample,items.created_at,EXISTS(SELECT 1 FROM photos WHERE photos.item_id=items.item_id) AS has_photo`;
 function publicItem(row,user) {
-  return {id:String(row.id),userId:String(row.user_id),title:row.title,reportType:row.report_type,category:row.category,location:row.location,date:row.date,eventTime:row.eventTime,description:row.description,handover:row.handover,status:row.status==='resolved'?'returned':'available',sample:!!row.sample,tone:'sage',photo:row.has_photo?`/api/index?action=photo&id=${encodeURIComponent(row.id)}`:'',canManage:!!user&&(user.isAdmin||user.id===String(row.user_id))};
+  return {id:String(row.id),userId:String(row.user_id),title:row.title,reportType:row.report_type,category:row.category,location:row.location,locationDetails:row.locationDetails,latitude:row.latitude,longitude:row.longitude,date:row.date,eventTime:row.eventTime,timePrecision:row.timePrecision,eventTimeEnd:row.eventTimeEnd,description:row.description,handover:row.handover,status:row.status==='resolved'?'returned':'available',sample:!!row.sample,tone:'sage',photo:row.has_photo?`/api/index?action=photo&id=${encodeURIComponent(row.id)}`:'',canManage:!!user&&(user.isAdmin||user.id===String(row.user_id))};
 }
 async function itemRow(db,id) {const r=await db.execute({sql:`SELECT ${itemColumns},COALESCE(NULLIF(contact_name,''),author.display_name) AS contact_name,COALESCE(NULLIF(contact_email,''),author.email) AS contact_email,contact_phone,contact_telegram FROM ${itemFrom} WHERE items.item_id=?`,args:[id]});if(!r.rows[0])fail(404,'This listing could not be found.');return r.rows[0];}
 
@@ -48,17 +48,8 @@ export default async function handler(req,res) {
     if(action==='photo'&&req.method==='GET') {
       const r=await db.execute({sql:'SELECT mime,data FROM photos WHERE item_id=?',args:[text(url.searchParams.get('id'))]});
       if(!r.rows[0])fail(404,'Photo not found.');
-      const bytes=Buffer.from(r.rows[0].data);
-      const etag='"'+createHash('sha256').update(bytes).digest('hex')+'"';
-      res.setHeader('Content-Type',r.rows[0].mime);
-      res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
-      res.setHeader('Cache-Control','public, max-age=0, must-revalidate');
-      res.setHeader('ETag',etag);
-      const tags=String(req.headers['if-none-match']||'').split(',').map(tag=>tag.trim());
-      if(tags.some(tag=>tag==='*'||tag===etag||tag==='W/'+etag)) {
-        res.statusCode=304;res.end();return;
-      }
-      res.statusCode=200;res.end(bytes);return;
+      res.setHeader('Content-Type',r.rows[0].mime);res.setHeader('Content-Security-Policy',"default-src 'none'; sandbox");
+      res.statusCode=200;res.end(Buffer.from(r.rows[0].data));return;
     }
     if(action==='manage'&&req.method==='GET') {
       requireUser(user);
@@ -106,6 +97,7 @@ export default async function handler(req,res) {
         const added=await tx.execute({sql:`INSERT INTO items(item_id,user_id,report_number,category_id,title,report_type,location,event_date,event_time,description,handover,contact_name,contact_email,contact_phone,contact_telegram,created_at)
           SELECT ?,?,COALESCE(MAX(report_number),0)+1,?,?,?,?,?,?,?,?,?,?,?,?,? FROM items WHERE user_id=? RETURNING item_id`,args:[allocatedId,user.id,Number(category.category_id),d.title,d.reportType,d.location,d.date,d.eventTime,d.description,d.handover,d.contactName,d.contactEmail.toLowerCase(),d.contactPhone,d.contactTelegram.replace(/^@/,''),Date.now(),user.id]});
         id=Number(added.rows[0].item_id);
+        await tx.execute({sql:'UPDATE items SET time_precision=?,event_time_end=?,location_details=?,latitude=?,longitude=? WHERE item_id=?',args:[d.timePrecision,d.eventTimeEnd,d.locationDetails,d.latitude,d.longitude,id]});
         if(validated.photo)await tx.execute({sql:'INSERT INTO photos(item_id,mime,data) VALUES(?,?,?)',args:[id,validated.photo.mime,validated.photo.bytes]});
         await tx.commit();
       }catch(error){await tx.rollback();throw error;}finally{tx.close();}

@@ -17,5 +17,7 @@ export function createApp(){return createServer(async(req,res)=>{
   try{const body=await readFile(path);res.setHeader('Content-Type',types[extname(path)]||'application/octet-stream');res.end(req.method==='HEAD'?undefined:body);}catch{res.writeHead(404);res.end('File not found');}
 });}
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
-  const port=Number(process.env.PORT||8000);createApp().listen(port,'127.0.0.1',()=>console.log(`AITU Lost & Found: http://localhost:${port}\nPress Ctrl+C to stop. SQLite data is saved in ./data unless a remote database is configured.`));
+  const argument=name=>{const index=process.argv.indexOf(name);return index<0?undefined:process.argv[index+1];};
+  const port=Number(process.env.PORT||argument('--port')||8000),host=argument('--host')||'127.0.0.1';
+  createApp().listen(port,host,()=>console.log(`AITU Lost & Found: http://localhost:${port}\nPress Ctrl+C to stop. SQLite data is saved in ./data unless a remote database is configured.`));
 }

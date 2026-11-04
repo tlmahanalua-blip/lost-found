@@ -37,20 +37,35 @@ export function loadState(storage) {
 export function persist(storage, state) { storage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 export function filterItems(items, { query='', category='', location='', status='', reportType='', mine=false, myIds=[] }={}) {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return items.filter(i => (!category || i.category===category) && (!location || i.location===location) && (!status || i.status===status) && (!reportType || (i.reportType || 'found')===reportType) && (!mine || myIds.includes(i.id)) && terms.every(t => [i.title,i.description,i.category,i.location].join(' ').toLocaleLowerCase().includes(t))).sort((a,b)=>normaliseEventDate(b.date).localeCompare(normaliseEventDate(a.date)));
+  return items.filter(i => (!category || i.category===category) && (!location || i.location===location) && (!status || i.status===status) && (!reportType || (i.reportType || 'found')===reportType) && (!mine || myIds.includes(i.id)) && terms.every(t => [i.title,i.description,i.category,i.location,i.locationDetails].join(' ').toLocaleLowerCase().includes(t))).sort((a,b)=>normaliseEventDate(b.date).localeCompare(normaliseEventDate(a.date)));
 }
 export function validateReport(d, today=TODAY, categories=CATEGORIES) {
   const e={};
   if (!d.title || d.title.trim().length<3 || d.title.trim().length>80) e.title='Enter an item name with 3–80 characters.';
   if (!categories.includes(d.category)) e.category='Choose an item category.';
   if (!LOCATIONS.includes(d.location)) e.location=d.reportType==='lost'?'Choose where you last saw the item.':'Choose where you found the item.';
-  if (d.eventTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.eventTime)) e.eventTime='Choose a valid time.';
+  const precision=d.timePrecision ?? (d.eventTime?'exact':'unknown');
+  const validTime=value=>typeof value==='string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  if (!['exact','range','unknown'].includes(precision)) e.timePrecision='Choose how well you remember the time.';
+  if (['exact','range'].includes(precision) && !validTime(d.eventTime)) e.eventTime=precision==='range'?'Choose the start time.':'Choose a valid time.';
+  if (precision==='range' && !validTime(d.eventTimeEnd)) e.eventTimeEnd='Choose the end time.';
+  else if (precision==='range' && validTime(d.eventTime) && d.eventTimeEnd<=d.eventTime) e.eventTimeEnd='End time must be later than start time on this date.';
+  if (d.locationDetails!==undefined && (typeof d.locationDetails!=='string' || d.locationDetails.trim().length>160)) e.locationDetails='Use up to 160 characters for the building, floor or room.';
+  const hasLat=d.latitude!==undefined && d.latitude!==null && d.latitude!=='';
+  const hasLng=d.longitude!==undefined && d.longitude!==null && d.longitude!=='';
+  if (hasLat!==hasLng || (hasLat && (typeof d.latitude!=='number' || typeof d.longitude!=='number' || !Number.isFinite(d.latitude) || !Number.isFinite(d.longitude) || Math.abs(d.latitude)>90 || Math.abs(d.longitude)>180))) e.coordinates='Choose a valid point on the map.';
   if (!validDate(d.date) || d.date>today) e.date='Choose a valid date, today or earlier.';
   if (!d.description || d.description.trim().length<10 || d.description.trim().length>600) e.description='Add a description with 10–600 characters.';
   if (!['Campus staff','I will keep it safely'].includes(d.handover)) e.handover='Choose a safe handover option.';
   if (!d.consent) e.consent='Confirm that the post contains no private details.';
   if (d.photo && !/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(d.photo)) e.photo='Choose a JPG, PNG or WebP photo.';
   return e;
+}
+export function formatEventTime(item) {
+  const precision=item.timePrecision ?? (item.eventTime?'exact':'unknown');
+  if(precision==='range')return `${item.eventTime}–${item.eventTimeEnd}`;
+  if(precision==='exact' && item.eventTime)return item.eventTime;
+  return 'Time not remembered';
 }
 export function createReport(state,d,id,today=TODAY) {
   const errors=validateReport(d,today);

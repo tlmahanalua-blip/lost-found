@@ -10,7 +10,7 @@
     "dev": "node --env-file-if-exists=.env server.js",
     "start": "node --env-file-if-exists=.env server.js",
     "build": "node scripts/check.mjs",
-    "test": "node --test tests/integration.mjs",
+    "test": "node --test tests/integration.mjs tests/time-map.mjs",
     "db:init": "node --env-file-if-exists=.env scripts/init-db.mjs",
     "db:seed": "node --env-file-if-exists=.env scripts/seed.mjs",
     "db:import": "node --env-file-if-exists=.env scripts/import-db.mjs",

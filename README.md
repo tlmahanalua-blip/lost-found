@@ -1,3 +1,7 @@
+# Pink design, flexible time and map update
+
+For the current update and GitHub upload steps, open **[UPDATE-PINK-RU.md](UPDATE-PINK-RU.md)**.
+
 # AITU Lost & Found — Vercel upload
 
 Deployable application source, version 3.2.0. Upload the CONTENTS of this folder to the existing GitHub repository root, keeping api/, lib/ and public/ as folders.
