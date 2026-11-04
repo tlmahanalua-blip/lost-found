@@ -35,9 +35,21 @@ export function loadState(storage) {
   return initialState();
 }
 export function persist(storage, state) { storage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-export function filterItems(items, { query='', category='', location='', status='', reportType='', mine=false, myIds=[] }={}) {
+export function dateFilterError(dateFrom='',dateTo='') {
+  const from=normaliseEventDate(dateFrom),to=normaliseEventDate(dateTo);
+  if((dateFrom&&!from)||(dateTo&&!to))return 'Choose a valid date.';
+  if(from&&to&&from>to)return 'The end date must be on or after the start date.';
+  return '';
+}
+export function filterItems(items, { query='', category='', location='', status='', reportType='', mine=false, myIds=[], dateFrom='', dateTo='' }={}) {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  return items.filter(i => (!category || i.category===category) && (!location || i.location===location) && (!status || i.status===status) && (!reportType || (i.reportType || 'found')===reportType) && (!mine || myIds.includes(i.id)) && terms.every(t => [i.title,i.description,i.category,i.location,i.locationDetails].join(' ').toLocaleLowerCase().includes(t))).sort((a,b)=>normaliseEventDate(b.date).localeCompare(normaliseEventDate(a.date)));
+  if(dateFilterError(dateFrom,dateTo))return [];
+  const from=normaliseEventDate(dateFrom),to=normaliseEventDate(dateTo);
+  return items.filter(i => {
+    const date=normaliseEventDate(i.date);
+    const dateMatches=(!from&&!to)||!!date&&(!from||date>=from)&&(!to||date<=to);
+    return dateMatches && (!category || i.category===category) && (!location || i.location===location) && (!status || i.status===status) && (!reportType || (i.reportType || 'found')===reportType) && (!mine || myIds.includes(i.id)) && terms.every(t => [i.title,i.description,i.category,i.location,i.locationDetails].join(' ').toLocaleLowerCase().includes(t));
+  }).sort((a,b)=>normaliseEventDate(b.date).localeCompare(normaliseEventDate(a.date)));
 }
 export function validateReport(d, today=TODAY, categories=CATEGORIES) {
   const e={};

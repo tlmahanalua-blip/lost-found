@@ -68,3 +68,29 @@
 @media (prefers-reduced-motion: reduce) {
   .item-card.item-enter { animation: none; }
 }
+
+/* Live noticeboard totals and event-date filters. */
+.campus-overview{margin:0 40px 30px}
+.overview-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:15px}
+.overview-heading .eyebrow{font-size:9px;color:var(--muted);margin-bottom:6px}
+.overview-heading h2{font-size:24px;line-height:1.25;letter-spacing:-.7px}
+.overview-link{display:inline-flex;align-items:center;gap:9px;min-height:44px;font-size:12px;font-weight:600;color:#813650;text-decoration:underline;text-underline-offset:4px}
+.overview-link:hover{color:#63223c}
+.overview-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.overview-metric{min-width:0;padding:20px 22px;border:1px solid var(--line);border-top:3px solid #e9bace;border-radius:12px;background:#fff}
+.overview-metric:nth-child(2){border-top-color:#d5b7dd;background:#fdf9fe}.overview-metric:nth-child(3){border-top-color:#c9799a;background:#fff0f6}
+.overview-metric>span{display:block;font-size:12px;font-weight:600;color:var(--muted)}
+.overview-metric>strong{display:block;font-size:34px;font-variant-numeric:tabular-nums;line-height:1.25;letter-spacing:-1px;color:#7d3652;margin:6px 0}
+.overview-metric>small{display:block;font-size:10px;color:var(--muted)}
+.overview-note{font-size:11px;line-height:1.6;color:var(--muted);margin-top:11px}
+.date-filter{margin-top:19px;min-width:0}
+.date-filter-title{font-size:11px;font-weight:600;margin-bottom:7px}
+.filters .date-filter label:not(.sr-only){display:block;margin:12px 0 6px;font-size:11px;grid-row:auto;grid-column:auto}
+.filters .date-filter select{font-size:11px;margin:0;grid-row:auto;grid-column:auto}
+.date-filter input[type=date]{display:block;width:100%;min-width:0;min-height:44px;padding:9px 8px;border:1px solid var(--line);border-radius:7px;background:#fffafb;color:var(--ink);font-size:12px}
+.date-range-inputs{display:grid;grid-template-columns:minmax(0,1fr);gap:0}.date-range-inputs>div{min-width:0}
+.date-filter-hint{font-size:10px;color:var(--muted);line-height:1.6;margin-top:8px}
+.date-filter-error{font-size:11px;color:var(--red);line-height:1.5;margin-top:8px}
+@media(max-width:760px){.campus-overview{margin:0 10px 24px}.overview-metric{padding:17px}.overview-metrics{gap:10px}.date-filter{grid-column:1/-1;grid-row:3;margin-top:10px;padding-top:12px;border-top:1px solid var(--line)}.date-filter-title{font-size:11px}.date-range-inputs{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.filters .date-filter select{font-size:12px;min-height:44px}.date-filter input[type=date]{font-size:16px}.date-filter-hint{font-size:11px}}
+@media(max-width:480px){.campus-overview{margin:0 0 22px}.overview-heading{display:block;margin-bottom:12px}.overview-heading h2{font-size:22px}.overview-link{font-size:11px;margin-top:2px}.overview-metrics{gap:7px}.overview-metric{padding:13px 10px}.overview-metric>span{font-size:11px;line-height:1.4;min-height:31px}.overview-metric>strong{font-size:28px}.overview-metric>small{display:none}.overview-note{font-size:10px}.date-filter input[type=date]{padding:10px 7px}}
+@media(max-width:760px){.topbar .brand{flex-shrink:0}.topbar .brand strong{white-space:nowrap}.topbar nav .nav-link{white-space:nowrap}.topbar nav .button.small{font-size:0;gap:0;padding:8px 12px;min-width:44px}.topbar nav .button.small>span{font-size:23px}}
