@@ -1,7 +1,6 @@
-import { CATEGORIES, LOCATIONS, TODAY, filterItems, dateFilterError, validateReport, formatEventDate, formatEventTime } from './model.js';
+import { CATEGORIES, LOCATIONS, TODAY, filterItems, validateReport, formatEventDate, formatEventTime } from './model.js';
 import {renderItemVisual} from './media.js';
 import {createLocationPicker,hasCoordinates,mapLinksMarkup,showItemMap} from './maps.js';
-import {summarize} from './statistics-data.js';
 const $=id=>document.getElementById(id);
 const esc=value=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const drawings = {
@@ -22,7 +21,7 @@ const pin='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 6c0 4-5 8-5 
 const dateLabel=formatEventDate;
 const locationPicker=createLocationPicker();
 let detailMap=null;
-let categoryNames=[...CATEGORIES],user=null,items=[],boardReady=false,mine=false,photoData='',photoBusy=false,toastTimer,authMode='login',afterAuth=null,activeItemId=null,detailTicket=0;
+let categoryNames=[...CATEGORIES],user=null,items=[],mine=false,photoData='',photoBusy=false,toastTimer,authMode='login',afterAuth=null,activeItemId=null,detailTicket=0;
 function toast(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').hidden=false;toastTimer=setTimeout(()=>$('toast').hidden=true,7000);}
 function errorToast(error){toast(error.message||'Please try again.');}
 function options(id,values){for(const value of values){const option=document.createElement('option');option.value=value;option.textContent=value;$(id).append(option);}}
@@ -41,52 +40,26 @@ function updateAccount(){
   $('coordinator-btn').innerHTML=(user?.isAdmin?'Coordinator desk':'Manage reports')+' <span aria-hidden="true">↗</span>';
   if(user){if(!$('contact-name').value)$('contact-name').value=user.name;if(!$('contact-email').value)$('contact-email').value=user.email;}
 }
-function renderOverview(){
-  if(!boardReady)return;
-  const data=summarize(items,[]);
-  $('overview-total').textContent=String(data.total);$('overview-open').textContent=String(data.open);$('overview-returned').textContent=String(data.resolved);
-  document.querySelector('.campus-overview').setAttribute('aria-busy','false');
-  $('overview-note').textContent=`All noticeboard reports. Includes ${data.samples} marked Sample; unflagged records may also include test posts.`;
-}
-function updateDateFilter(){
-  const mode=$('date-mode').value;
-  $('date-day-wrap').hidden=mode!=='day';$('filter-date').disabled=mode!=='day';
-  $('date-range-wrap').hidden=mode!=='range';
-  for(const id of ['filter-date-from','filter-date-to'])$(id).disabled=mode!=='range';
-}
-function readDateFilter(){
-  const mode=$('date-mode').value;
-  const dateFrom=mode==='day'?$('filter-date').value:mode==='range'?$('filter-date-from').value:'';
-  const dateTo=mode==='day'?$('filter-date').value:mode==='range'?$('filter-date-to').value:'';
-  const inputs=['filter-date','filter-date-from','filter-date-to'].map($);
-  const error=inputs.some(input=>!input.disabled&&input.validity.badInput)?'Choose a valid date.':dateFilterError(dateFrom,dateTo);
-  $('date-filter-error').textContent=error;$('date-filter-error').hidden=!error;
-  for(const input of inputs){if(error&&!input.disabled)input.setAttribute('aria-invalid','true');else input.removeAttribute('aria-invalid');}
-  $('date-filter-hint').textContent=error?'Fix the dates to apply this filter.':mode==='day'&&!dateFrom?'Choose the day the item was lost or found.':mode==='range'?'Choose one or both dates. The start and end dates are included.':'The date the item was lost or found.';
-  return {dateFrom:error?'':dateFrom,dateTo:error?'':dateTo,error};
-}
 function render(){
-  const dates=readDateFilter();
-  const shown=filterItems(items,{query:$('search').value,category:$('category').value,location:$('location').value,reportType:$('status').value,mine,myIds:user?items.filter(i=>i.userId===user.id).map(i=>i.id):[],dateFrom:dates.dateFrom,dateTo:dates.dateTo});
+  const shown=filterItems(items,{query:$('search').value,category:$('category').value,location:$('location').value,reportType:$('status').value,mine,myIds:user?items.filter(i=>i.userId===user.id).map(i=>i.id):[]});
   $('list-title').textContent=mine?'Your good deeds, all in one place.':'Your things might be here.';
   $('list-subtitle').textContent=mine?'Reports saved to your account.':'Browse recent finds or narrow down your search.';
-  $('result-count').textContent=`${shown.length} ${shown.length===1?'item':'items'} ${mine?'in your reports':'on the noticeboard'}${dates.error?' · date filter not applied':''}`;
+  $('result-count').textContent=`${shown.length} ${shown.length===1?'item':'items'} ${mine?'in your reports':'on the noticeboard'}`;
   const previousIds=new Set(Array.from($('items-grid').children,card=>card.dataset.item));
   $('items-grid').innerHTML=shown.map(item=>`<button class="item-card${previousIds.has(String(item.id))?'':' item-enter'}" data-item="${esc(item.id)}" aria-label="View ${esc(item.title)}, ${esc(item.location)}"><div class="item-visual tone-${esc(item.tone||'sage')}">${visual(item)}${item.sample?'<span class="sample-tag">SAMPLE</span>':''}</div><div class="card-body"><div class="card-meta"><span class="status-pill ${item.reportType==='lost'?'lost':''}">${item.reportType==='lost'?'LOST':'FOUND'}</span><span class="card-date">${dateLabel(item.date)}</span></div><h3>${esc(item.title)}</h3><div class="card-location">${pin}${esc(item.location)}</div><div class="card-bottom"><span>${esc(item.category)}${item.status==='returned'?' · Returned':''}</span><span aria-hidden="true">↗</span></div></div></button>`).join('');
   $('empty-state').hidden=shown.length>0;
-  $('empty-state').innerHTML=mine&&!items.some(i=>i.userId===user?.id)?'<div aria-hidden="true">＋</div><h3>No reports in your account yet.</h3><p>Lost or found something? Add a report to the noticeboard.</p><button class="button light" id="first-report">Report an item</button>':'<div aria-hidden="true">⌕</div><h3>No matching items yet.</h3><p>Try fewer words, another date or another location. New reports appear here.</p><button class="button light" id="empty-reset">Clear search & filters</button>';
-  renderOverview();
+  $('empty-state').innerHTML=mine&&!items.some(i=>i.userId===user?.id)?'<div aria-hidden="true">＋</div><h3>No reports in your account yet.</h3><p>Lost or found something? Add a report to the noticeboard.</p><button class="button light" id="first-report">Report an item</button>':'<div aria-hidden="true">⌕</div><h3>No matching items yet.</h3><p>Try fewer words or another location. New reports appear here.</p><button class="button light" id="empty-reset">Clear search & filters</button>';
   updateAccount();
 }
-async function refresh(){const result=await api('items');items=result.items;boardReady=true;render();}
+async function refresh(){const result=await api('items');items=result.items;render();}
 async function boot(){
   $('connection-badge').textContent='CONNECTING';$('connection-message').textContent='Loading the shared campus noticeboard…';$('retry-btn').hidden=true;
-  try{const [account,board,categoryData]=await Promise.all([api('session'),api('items'),api('categories')]);categoryNames=categoryData.categories.map(c=>c.name);for(const id of ['category','report-category']){const select=$(id);while(select.options.length>1)select.remove(1);options(id,categoryNames);}user=account.user;items=board.items;boardReady=true;render();$('connection-badge').textContent='CONNECTED';$('connection-message').textContent='Shared campus noticeboard. Photos and reports are saved; contact details are shown after sign-in.';}
-  catch(error){$('connection-badge').textContent='OFFLINE';$('connection-message').textContent=error.message;$('retry-btn').hidden=false;$('result-count').textContent='Could not load listings.';document.querySelector('.campus-overview').setAttribute('aria-busy','false');$('overview-note').textContent=boardReady?'Showing the last loaded totals. Retry the connection to update.':'Statistics are unavailable. Retry the connection above.';}
+  try{const [account,board,categoryData]=await Promise.all([api('session'),api('items'),api('categories')]);categoryNames=categoryData.categories.map(c=>c.name);for(const id of ['category','report-category']){const select=$(id);while(select.options.length>1)select.remove(1);options(id,categoryNames);}user=account.user;items=board.items;render();$('connection-badge').textContent='CONNECTED';$('connection-message').textContent='Shared campus noticeboard. Photos and reports are saved; contact details are shown after sign-in.';const linkedItem=new URLSearchParams(window.location.search).get('item');if(linkedItem&&/^\d+$/.test(linkedItem))await openItem(linkedItem);}
+  catch(error){$('connection-badge').textContent='OFFLINE';$('connection-message').textContent=error.message;$('retry-btn').hidden=false;$('result-count').textContent='Could not load listings.';}
 }
 $('retry-btn').addEventListener('click',boot);
 function goTab(name,scroll=false){for(const key of ['browse','report']){const selected=key===name;$(key+'-panel').hidden=!selected;$(key+'-tab').setAttribute('aria-selected',String(selected));$(key+'-tab').tabIndex=selected?0:-1;$(key+'-tab').classList.toggle('active',selected);}if(name==='report')locationPicker.resize();if(scroll)document.querySelector('.workspace').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
-function clearFilters(){for(const id of ['search','category','location','filter-date','filter-date-from','filter-date-to'])$(id).value='';$('status').value='';$('date-mode').value='all';updateDateFilter();render();}
+function clearFilters(){for(const id of ['search','category','location'])$(id).value='';$('status').value='';render();}
 $('browse-tab').addEventListener('click',()=>{mine=false;render();goTab('browse');});$('report-tab').addEventListener('click',()=>goTab('report'));
 document.querySelector('.workspace-tabs').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const name=event.key==='Home'?'browse':event.key==='End'?'report':$('browse-tab').getAttribute('aria-selected')==='true'?'report':'browse';goTab(name);$(name+'-tab').focus();});
 for(const id of ['header-report','hero-report'])$(id).addEventListener('click',()=>goTab('report',true));
@@ -97,11 +70,16 @@ $('my-btn').addEventListener('click',()=>{if(!user){openAuth('login',()=>{$('my-
 for(const id of ['clear-filters','results-reset'])$(id).addEventListener('click',clearFilters);
 $('search').addEventListener('input',render);$('search-form').addEventListener('submit',event=>{event.preventDefault();render();});
 for(const id of ['category','location','status'])$(id).addEventListener('change',render);
-$('date-mode').addEventListener('change',()=>{updateDateFilter();render();});
-for(const id of ['filter-date','filter-date-from','filter-date-to'])$(id).addEventListener('input',render);
-updateDateFilter();
 $('empty-state').addEventListener('click',event=>{if(event.target.closest('#empty-reset'))clearFilters();if(event.target.closest('#first-report'))goTab('report');});
 $('items-grid').addEventListener('click',event=>{const card=event.target.closest('[data-item]');if(card)openItem(card.dataset.item);});
+function showPublishSuccess(item){
+  const url=new URL(window.location.href);url.searchParams.set('item',String(item.id));
+  $('view-published-report').href=url.pathname+url.search+url.hash;
+  $('publish-success-item').textContent=item.title;
+  $('publish-success-dialog').showModal();
+  $('view-published-report').focus();
+}
+$('publish-success-close').addEventListener('click',()=>{$('publish-success-dialog').close();$('browse-tab').focus({preventScroll:true});});
 for(const dialog of document.querySelectorAll('dialog')){dialog.querySelector('[data-close]').addEventListener('click',()=>dialog.close());dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)dialog.close();}});}
 
 function openAuth(mode='login',continuation=null){
@@ -212,7 +190,7 @@ $('report-form').addEventListener('submit',async event=>{
   const data={reportType:$('report-type').value,title:$('title').value,category:$('report-category').value,location:$('report-location').value,date:$('date').value,timePrecision:document.querySelector('input[name=timePrecision]:checked').value,eventTime:$('event-time').disabled?'':$('event-time').value,eventTimeEnd:$('event-time-end').disabled?'':$('event-time-end').value,locationDetails:$('location-details').value,...locationPicker.value(),description:$('description').value,handover:$('handover').value,consent:$('consent').checked,photo:photoData,contactName:$('contact-name').value,contactEmail:$('contact-email').value,contactPhone:$('contact-phone').value,contactTelegram:$('contact-telegram').value,contactConsent:$('contact-consent').checked};
   const errors=validateReport(data,TODAY,categoryNames);if(Object.keys(errors).length){showReportErrors(errors);return;}
   $('submit-report').disabled=true;$('submit-report').textContent='Saving…';
-  try{const result=await api('items',{method:'POST',data});clearReportErrors();$('report-form').reset();updateTimeMode();locationPicker.reset();updateReportType();$('date').value=TODAY;$('description-count').textContent='0 / 600';removePhoto();mine=false;await refresh();clearFilters();goTab('browse',true);await openItem(result.item.id);toast('Report published. Your photo and contacts are saved.');}
+  try{const result=await api('items',{method:'POST',data});clearReportErrors();$('report-form').reset();updateTimeMode();locationPicker.reset();updateReportType();$('date').value=TODAY;$('description-count').textContent='0 / 600';removePhoto();mine=false;items=[result.item,...items.filter(item=>item.id!==result.item.id)];clearFilters();goTab('browse',true);showPublishSuccess(result.item);}
   catch(error){if(error.status===401){user=null;updateAccount();openAuth('login');}else showReportErrors(error.errors||{},error.message);}
   finally{$('submit-report').disabled=false;$('submit-report').innerHTML='Publish report <span aria-hidden="true">→</span>';}
 });
