@@ -239,3 +239,78 @@
     grid-row: 4;
   }
 }
+
+/* ===== PINK FILTER DESIGN ===== */
+
+/* All filters: category, location, status, dates */
+.filters select,
+.filters input[type="date"] {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 45px;
+    box-sizing: border-box;
+
+    background-color: #f9edf2;
+    color: #682f46;
+    border: 1px solid #e8ced8;
+    border-radius: 11px;
+
+    padding: 11px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+/* Dropdown arrow */
+.filters select {
+    appearance: none;
+    padding-right: 30px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238e3f5c' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px;
+}
+
+/* Calendar icon */
+.filters input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.75;
+    filter: invert(35%) sepia(25%)
+            saturate(950%) hue-rotate(285deg);
+}
+
+/* Hover */
+.filters select:hover,
+.filters input[type="date"]:hover {
+    background-color: #fff4f8;
+    border-color: #b77d94;
+}
+
+/* Focus */
+.filters select:focus,
+.filters input[type="date"]:focus {
+    background-color: #ffffff;
+    border-color: #8e3f5c;
+    box-shadow: 0 0 0 3px #f5dce6;
+}
+
+/* Labels */
+.filters label {
+    color: #682f46;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+/* Mobile */
+@media (max-width: 760px) {
+    .filters select,
+    .filters input[type="date"] {
+        font-size: 12px;
+        min-height: 44px;
+    }
+}
