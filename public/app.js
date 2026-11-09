@@ -41,7 +41,19 @@ function updateAccount(){
   if(user){if(!$('contact-name').value)$('contact-name').value=user.name;if(!$('contact-email').value)$('contact-email').value=user.email;}
 }
 function render(){
-  const shown=filterItems(items,{query:$('search').value,category:$('category').value,location:$('location').value,reportType:$('status').value,mine,myIds:user?items.filter(i=>i.userId===user.id).map(i=>i.id):[]});
+  
+const shown = filterItems(items, {
+  query: $('search').value,
+  category: $('category').value,
+  location: $('location').value,
+  reportType: $('status').value,
+  dateFrom: $('date-from').value,
+  dateTo: $('date-to').value,
+  mine,
+  myIds: user
+    ? items.filter(i => i.userId === user.id).map(i => i.id)
+    : []
+});
   $('list-title').textContent=mine?'Your good deeds, all in one place.':'Your things might be here.';
   $('list-subtitle').textContent=mine?'Reports saved to your account.':'Browse recent finds or narrow down your search.';
   $('result-count').textContent=`${shown.length} ${shown.length===1?'item':'items'} ${mine?'in your reports':'on the noticeboard'}`;
