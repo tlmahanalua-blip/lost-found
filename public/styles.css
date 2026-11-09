@@ -206,3 +206,36 @@
     animation: none !important;
   }
 }
+
+.filters input[type="date"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbf7f8;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .filters label[for="date-from"],
+  .filters label[for="date-to"] {
+    grid-row: 3;
+  }
+
+  .filters label[for="date-from"],
+  #date-from {
+    grid-column: 1;
+  }
+
+  .filters label[for="date-to"],
+  #date-to {
+    grid-column: 2;
+  }
+
+  #date-from, #date-to {
+    grid-row: 4;
+  }
+}
