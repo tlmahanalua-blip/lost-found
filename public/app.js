@@ -71,7 +71,16 @@ async function boot(){
 }
 $('retry-btn').addEventListener('click',boot);
 function goTab(name,scroll=false){for(const key of ['browse','report']){const selected=key===name;$(key+'-panel').hidden=!selected;$(key+'-tab').setAttribute('aria-selected',String(selected));$(key+'-tab').tabIndex=selected?0:-1;$(key+'-tab').classList.toggle('active',selected);}if(name==='report')locationPicker.resize();if(scroll)document.querySelector('.workspace').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});}
-function clearFilters(){for(const id of ['search','category','location'])$(id).value='';$('status').value='';render();}
+
+function clearFilters() {
+  for (const id of [
+    'search', 'category', 'location',
+    'status', 'date-from', 'date-to'
+  ]) {
+    $(id).value = '';
+  }
+  render();
+}
 $('browse-tab').addEventListener('click',()=>{mine=false;render();goTab('browse');});$('report-tab').addEventListener('click',()=>goTab('report'));
 document.querySelector('.workspace-tabs').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const name=event.key==='Home'?'browse':event.key==='End'?'report':$('browse-tab').getAttribute('aria-selected')==='true'?'report':'browse';goTab(name);$(name+'-tab').focus();});
 for(const id of ['header-report','hero-report'])$(id).addEventListener('click',()=>goTab('report',true));
@@ -81,7 +90,14 @@ $('cancel-report').addEventListener('click',()=>{mine=false;render();goTab('brow
 $('my-btn').addEventListener('click',()=>{if(!user){openAuth('login',()=>{$('my-btn').click();});return;}mine=true;clearFilters();$('status').value='';render();goTab('browse',true);});
 for(const id of ['clear-filters','results-reset'])$(id).addEventListener('click',clearFilters);
 $('search').addEventListener('input',render);$('search-form').addEventListener('submit',event=>{event.preventDefault();render();});
-for(const id of ['category','location','status'])$(id).addEventListener('change',render);
+
+for (const id of [
+  'category', 'location', 'status',
+  'date-from', 'date-to'
+]) {
+  $(id).addEventListener('change', render);
+}
+
 $('empty-state').addEventListener('click',event=>{if(event.target.closest('#empty-reset'))clearFilters();if(event.target.closest('#first-report'))goTab('report');});
 $('items-grid').addEventListener('click',event=>{const card=event.target.closest('[data-item]');if(card)openItem(card.dataset.item);});
 function showPublishSuccess(item){
